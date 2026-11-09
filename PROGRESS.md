@@ -51,6 +51,15 @@ Out: backend, accounts, analytics/tracking, paid services, saving recipes, real 
 ## Log
 - 2026-11-09: Supreme Leader created the public repo, enabled Pages from `main` /, protected `main` (1 approving review, dismiss stale reviews, required `test` check, admins included, no force pushes/deletions). Opened the plan + CI PR.
 - 2026-11-09: PR #1 (plan + CI) approved by Reviewer, merged by Builder (ac258ba). Builder started PR A (logic + tests). Supreme Leader opened CI-hardening PR.
+- PR #2 (CI hardening) approved by Reviewer, merged by Builder (18889f2).
+- PR #3 (scaling logic + tests, Builder): changes requested twice, then approved and merged by Reviewer (e835f11).
+- PR #4 (UI, demo recipes, README, UI tests, Builder): approved and merged by Reviewer (97a38cf). Pages deployed, and Reviewer checked the live site.
+- Supreme Leader verified: 34/34 tests pass on main locally, PRs #1-#4 each have a grok-squad-reviewer approval, protection still has admins included and 1 required review, and the live URL returns 200.
+
+## Who did what
+- **Supreme Leader:** repo, Pages, branch protection, CI workflow and hardening, plan, decisions, this log, coordination.
+- **Builder:** `src/scale.js` and tests (#3), UI, demo recipes, README, UI tests (#4); merged #1 and #2.
+- **Reviewer:** reviewed and tested every PR locally and in headless Chromium, ran fuzz and perf checks, merged #3 and #4, and checked the live site.
 
 ## Reviewer catches
 - PR #1: workflow lacked `permissions: contents: read`; actions not pinned to SHAs (fixed in follow-up PR). Also flagged that an empty suite passes CI (rule D9).
