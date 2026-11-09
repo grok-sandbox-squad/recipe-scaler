@@ -10,7 +10,7 @@
  *
  * Helpers (also exported for tests / UI):
  *   parseQuantity, parseLine, formatFraction, formatMetric,
- *   formatUsVolume, convertAmount, scaleFactor
+ *   formatUsVolume, convertAmount, scaleFactor, ALLOW_HALF_TBSP
  *
  * @module scale
  */
@@ -120,6 +120,22 @@ const COOK_FRACTIONS = [
 ];
 
 /**
+ * When true, whole+1/2 tbsp may display as "N 1/2 tbsp".
+ * Thirds and quarters of a tbsp still split to tsp when scaled.
+ * Flip to false in one place to forbid half-tablespoons.
+ * @type {boolean}
+ */
+export let ALLOW_HALF_TBSP = true;
+
+/** Leftover tsp after a tbsp may only be these (no 1/3 or 2/3 in compounds). */
+const COMPOUND_TSP_FRACTIONS = [
+  [0, ''], [1 / 4, '1/4'], [1 / 2, '1/2'], [3 / 4, '3/4'], [1, ''],
+];
+
+/** Pinch cutoff: below this → "a pinch"; from here up to 1/8 tsp → "1/8 tsp". */
+const PINCH_CUTOFF_TSP = 1 / 16;
+
+/**
  * Round to the nearest cook fraction (whole + 1/4, 1/3, 1/2, 2/3, 3/4).
  * Ties at the midpoint between 3/4 and the next whole carry UP
  * (e.g. 0.875 → 1, 1.875 → 2), matching "1 7/8 tsp → 2 tsp".
@@ -138,6 +154,30 @@ function roundCook(n) {
   // Carry up on a tie (or closer to next whole).
   if (Math.abs(n - next) <= Math.abs(n - v)) return next;
   return v;
+}
+
+/** Round leftover tsp to 0, 1/4, 1/2, 3/4, or 1 (carry). Ties carry up. */
+function roundCompoundTsp(n) {
+  if (!Number.isFinite(n) || n < 0) return n;
+  const whole = Math.floor(n);
+  let best = COMPOUND_TSP_FRACTIONS[0];
+  for (const f of COMPOUND_TSP_FRACTIONS) {
+    if (Math.abs(n - whole - f[0]) < Math.abs(n - whole - best[0])) best = f;
+  }
+  const v = whole + best[0];
+  const next = whole + 1;
+  if (Math.abs(n - next) <= Math.abs(n - v)) return next;
+  return v;
+}
+
+function formatCompoundTspFrac(n) {
+  const v = roundCompoundTsp(n);
+  const whole = Math.floor(v + 1e-9);
+  const frac = v - whole;
+  const f = COMPOUND_TSP_FRACTIONS.find(([x]) => Math.abs(x - frac) < 1e-9);
+  const fracText = f ? f[1] : '';
+  if (whole === 0) return fracText || '0';
+  return fracText ? `${whole} ${fracText}` : String(whole);
 }
 
 
@@ -288,12 +328,10 @@ function unitLabel(unit, value) {
  * Format a US volume the way a cook writes it (D-new rounding rule).
  *
  * After converting to teaspoons and rounding leftovers to the cook tsp grid:
- * 1. Exact clean cook cup (1/4, 1/3, 1/2, 2/3, 3/4, or whole cups plus those)
- *    → show cups (12 tbsp → "3/4 cup", 16 tbsp → "1 cup").
- * 2. Else below 1 cup, whole number of tbsp → "N tbsp"
- *    (6 tbsp → "6 tbsp", 5/8 cup → "10 tbsp").
- * 3. Else split: cups + tbsp (above 1 cup) or tbsp + tsp (fractional tbsp).
- * Under 1 tbsp: tsp with cook fractions, standalone 1/8 tsp, or "a pinch".
+ * 1. Exact clean cook cup → cups.
+ * 2. Else below 1 cup, whole tbsp (or N 1/2 tbsp when ALLOW_HALF_TBSP) → tbsp form.
+ * 3. Else split: cups + tbsp (≥ 1 cup) or tbsp + tsp (thirds/quarters of a tbsp).
+ * Under 1 tbsp: tsp with cook fractions, 1/8 tsp from 1/16..1/8, pinch below 1/16.
  *
  * @param {number} value Amount in `unit`.
  * @param {'cup'|'tbsp'|'tsp'} unit
@@ -307,53 +345,89 @@ export function formatUsVolume(value, unit) {
 }
 
 /**
- * D-new rounding rule, working in teaspoons.
  * @param {number} totalTsp
  * @returns {string}
  */
 function formatFromTsp(totalTsp) {
   if (!Number.isFinite(totalTsp) || totalTsp < 0) return String(totalTsp);
   if (totalTsp === 0) return '0 tsp';
-  if (totalTsp < 1 / 8) return 'a pinch';
-
-  // Under ~1 tbsp: tsp-only path (allowed fractions / 1/8 / pinch).
+  // Pinch / 1/8 band for sub-tablespoon amounts handled in formatStandaloneTsp.
   if (totalTsp < 3 * (1 - UNIT_TOLERANCE)) {
     return formatStandaloneTsp(totalTsp);
   }
 
-  // Round to the allowed tbsp + cook-tsp grid first.
+  // Round leftover tsp on the compound grid (1/4, 1/2, 3/4 only).
   let w = Math.floor(totalTsp / 3 + 1e-9);
   let tspRem = totalTsp - w * 3;
-  let remRounded = roundCook(Math.max(tspRem, 0));
+  let remRounded = roundCompoundTsp(Math.max(tspRem, 0));
   if (remRounded >= 3 - 1e-9) {
     w += 1;
     tspRem = 0;
     remRounded = 0;
   }
-  const dropLeftover = tspRem < 1 / 8 || remRounded < 1e-9;
-  const gridTsp = dropLeftover ? w * 3 : w * 3 + remRounded;
+
+  // Snap near-whole tbsp within tolerance (e.g. 2 tbsp × 0.95 ≈ 1.9 → 2 tbsp).
+  if (w >= 1 && tspRem > 0 && Math.abs(totalTsp - w * 3) / Math.max(totalTsp, 1e-9) <= UNIT_TOLERANCE
+      && remRounded < 1.5) {
+    // closer to w tbsp than to w+1 with small leftover — snap down if rem is tiny after compound round
+  }
+  if (Math.abs(totalTsp - Math.round(totalTsp / 3) * 3) / Math.max(totalTsp, 1e-9) <= UNIT_TOLERANCE) {
+    const snapped = Math.round(totalTsp / 3);
+    if (snapped > 0 && Math.abs(totalTsp - snapped * 3) <= 0.5) {
+      // within half a tsp of a whole tbsp count
+      w = snapped;
+      tspRem = 0;
+      remRounded = 0;
+    }
+  }
+
+  // Half-tablespoon display when allowed: N.5 tbsp exactly (1.5 tsp rem).
+  const halfTbsp = ALLOW_HALF_TBSP && Math.abs(remRounded - 1.5) < 1e-9;
+  // Drop leftovers ≤ 1/2 tsp once we have ≥ 2 tbsp.
+  const dropSmall = w >= 2 && remRounded > 0 && remRounded <= 0.5 + 1e-9;
+  const dropLeftover = tspRem < PINCH_CUTOFF_TSP || remRounded < 1e-9 || dropSmall
+    || (tspRem < 1 / 8 && remRounded < 1 / 8);
+
+  let gridTsp;
+  if (halfTbsp && !dropLeftover) {
+    gridTsp = w * 3 + 1.5;
+  } else if (dropLeftover) {
+    gridTsp = w * 3;
+    remRounded = 0;
+  } else {
+    gridTsp = w * 3 + remRounded;
+  }
 
   // Step 1: exact clean cook cup?
   const clean = exactCleanCookCup(gridTsp);
   if (clean) return clean;
 
-  // Step 2: below 1 cup, whole tbsp → N tbsp.
-  if (dropLeftover && w > 0 && gridTsp < 48 - 1e-9) {
-    return `${w} tbsp`;
+  // Step 2: below 1 cup — whole tbsp, or N 1/2 tbsp when allowed.
+  if (gridTsp < 48 - 1e-9) {
+    if (halfTbsp && !dropLeftover) {
+      const label = w === 0 ? '1/2 tbsp' : `${w} 1/2 tbsp`;
+      return label;
+    }
+    if ((dropLeftover || remRounded < 1e-9) && w > 0) {
+      return `${w} tbsp`;
+    }
   }
 
   // Step 3: split.
   if (gridTsp >= 48 - 1e-9) {
-    return formatCupsPlusTbsp(gridTsp);
+    return formatCupsPlusTbsp(totalTsp); // EXACT amount, not eighth-rounded
   }
-  if (w <= 0) return formatStandaloneTsp(totalTsp);
-  if (dropLeftover) return `${w} tbsp`;
-  return `${w} tbsp + ${formatCookFrac(remRounded)} tsp`;
+  if (w <= 0 && !halfTbsp) return formatStandaloneTsp(totalTsp);
+  if (halfTbsp && w >= 0) {
+    return w === 0 ? '1/2 tbsp' : `${w} 1/2 tbsp`;
+  }
+  if (dropLeftover || remRounded < 1e-9) {
+    return w > 0 ? `${w} tbsp` : formatStandaloneTsp(totalTsp);
+  }
+  return `${w} tbsp + ${formatCompoundTspFrac(remRounded)} tsp`;
 }
 
 /**
- * True clean cook cup in teaspoons (1/4, 1/3, 1/2, 2/3, 3/4, whole+those).
- * Strict: must land on the cup amount in tsp within float noise.
  * @param {number} totalTsp
  * @returns {string|null}
  */
@@ -367,45 +441,39 @@ function exactCleanCookCup(totalTsp) {
 }
 
 /**
- * Above-or-at 1 cup when not a clean cook cup: "N cups + M tbsp".
+ * Cups + tbsp from the EXACT tsp amount (not a pre-rounded eighth).
  * @param {number} totalTsp
  * @returns {string}
  */
 function formatCupsPlusTbsp(totalTsp) {
   const cups = totalTsp / 48;
-  // Prefer the largest cook cup <= amount whose remainder is whole tbsp.
   let best = null;
   const maxWhole = Math.floor(cups + 1e-9);
   for (let whole = maxWhole; whole >= 1; whole--) {
     for (const [f] of COOK_FRACTIONS) {
       if (f === 1) continue;
       const c = whole + f;
-      if (c > cups + 1e-9) continue;
-      if (c < 1 - 1e-9) continue;
+      if (c > cups + 1e-9 || c < 1 - 1e-9) continue;
       const tbspRem = (cups - c) * 16;
       const tWhole = Math.round(tbspRem);
-      if (Math.abs(tbspRem - tWhole) > 1e-6) continue;
+      // Allow up to ~0.05 tbsp noise from exact float math.
+      if (Math.abs(tbspRem - tWhole) > 0.05) continue;
       if (tWhole < 0) continue;
       if (!best || c > best.c) best = { c, tbsp: tWhole };
     }
   }
-  // Also plain whole cups with tbsp remainder.
   const wholeOnly = Math.floor(cups + 1e-9);
   if (wholeOnly >= 1) {
     const tbspRem = (cups - wholeOnly) * 16;
     const tWhole = Math.round(tbspRem);
-    if (Math.abs(tbspRem - tWhole) <= 1e-6) {
-      const cand = { c: wholeOnly, tbsp: tWhole };
-      if (!best || cand.c > best.c || (cand.c === best.c && cand.tbsp < best.tbsp)) {
-        best = cand;
-      }
+    if (Math.abs(tbspRem - tWhole) <= 0.05) {
+      const cand = { c: wholeOnly, tbsp: Math.max(0, tWhole) };
+      if (!best || cand.c > best.c) best = cand;
     }
   }
   if (!best) {
-    // Fallback: whole cups + rounded tbsp.
     const w = Math.max(1, Math.floor(cups + 1e-9));
-    const t = Math.round((cups - w) * 16);
-    best = { c: w, tbsp: Math.max(0, t) };
+    best = { c: w, tbsp: Math.max(0, Math.round((cups - w) * 16)) };
   }
   const cupPart = `${formatCookFrac(best.c)} ${best.c > 1 ? 'cups' : 'cup'}`;
   if (best.tbsp <= 0) return cupPart;
@@ -413,14 +481,14 @@ function formatCupsPlusTbsp(totalTsp) {
 }
 
 /**
- * Standalone tsp: cook fractions, plus 1/8 tsp only when the amount is at
- * least 1/8 (never round a pinch-band amount up to 1/8).
+ * Standalone tsp. Pinch below 1/16; 1/16..1/8 → 1/8 tsp.
  * @param {number} tsp
  * @returns {string}
  */
 function formatStandaloneTsp(tsp) {
   if (tsp <= 0) return '0 tsp';
-  if (tsp < 1 / 8) return 'a pinch';
+  if (tsp < PINCH_CUTOFF_TSP) return 'a pinch';
+  if (tsp < 1 / 8) return '1/8 tsp';
 
   const whole = Math.floor(tsp);
   const candidates = [];
@@ -428,9 +496,7 @@ function formatStandaloneTsp(tsp) {
     if (f === 1) continue;
     candidates.push(whole + f);
   }
-  candidates.push(whole);
-  candidates.push(whole + 1);
-  candidates.push(whole + 1 / 8);
+  candidates.push(whole, whole + 1, whole + 1 / 8);
 
   let best = candidates[0];
   for (const c of candidates) {
@@ -443,12 +509,11 @@ function formatStandaloneTsp(tsp) {
 
   if (best >= 3 - 1e-9) {
     const tbsp = best / 3;
-    if (Math.abs(tbsp - Math.round(tbsp)) < 1e-9) {
-      return formatFromTsp(best);
-    }
+    if (Math.abs(tbsp - Math.round(tbsp)) < 1e-9) return formatFromTsp(best);
   }
   if (Math.abs(best - 1 / 8) < 1e-9) return '1/8 tsp';
-  if (best < 1 / 8) return 'a pinch';
+  if (best < PINCH_CUTOFF_TSP) return 'a pinch';
+  if (best < 1 / 8) return '1/8 tsp';
   return `${formatCookFrac(best)} tsp`;
 }
 
@@ -469,11 +534,16 @@ export function parseLine(line) {
   if (q1 === null || (g.q2 !== undefined && q2 === null)) return null;
   const unit = Object.keys(UNITS).find((k) => g[k] !== undefined) ?? null;
   const rest = line.slice(m[0].length);
+  // Raw matched unit spelling (e.g. "Tbsp.", "cups") for x1 echo.
+  const rawUnit = unit ? (g[unit] ?? null) : null;
   return {
     prefix: g.prefix,
     quantities: q2 === null ? [q1] : [q1, q2],
+    rawQuantities: q2 === null ? [g.q1] : [g.q1, g.q2],
     separator: g.sep ?? null,
     unit,
+    rawUnit,
+    matched: m[0],
     rest,
   };
 }
@@ -506,17 +576,40 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
     return { ...base, flagged: true, reason: 'non-scalable' };
   }
 
+  // x1 echo for US cook volumes (cup/tbsp/tsp) only: keep the typed
+  // amount+unit unless it contains a forbidden eighth (3/8, 5/8, 7/8, or
+  // 1/8 of a non-tsp unit). Half-tbsp and even "1 1/3 tbsp" ARE echoed at
+  // x1 (thirds only split when scaled). Counts/weights/metric still process.
+  const cookUnit = p.unit === 'cup' || p.unit === 'tbsp' || p.unit === 'tsp';
+  if (
+    Math.abs(factor - 1) < 1e-15
+    && system !== 'metric'
+    && cookUnit
+    && !hasForbiddenEighth(p)
+  ) {
+    return { ...base, output: line, scaled: true };
+  }
+
   const scaled = p.quantities.map((q) => q * factor);
   if (!scaled.every(Number.isFinite)) return { ...base, flagged: true, reason: 'no-quantity' };
   let texts;
   let unitText = '';
+  const sys = system === 'metric' ? 'metric' : 'us';
+
+  if (p.unit && sys === 'us' && (p.unit === 'cup' || p.unit === 'tbsp' || p.unit === 'tsp')
+      && scaled.length === 2) {
+    // Range of US volumes: try shared unit ladder, then per-end format.
+    const joined = formatUsVolumeRange(scaled[0], scaled[1], p.unit, p.separator);
+    const rest = p.rest;
+    const output = p.prefix + joined + rest;
+    if (/NaN|Infinity/.test(joined)) return { ...base, flagged: true, reason: 'no-quantity' };
+    return { ...base, output: fixPinchOf(output), scaled: true };
+  }
+
   if (p.unit) {
-    const sys = system === 'metric' ? 'metric' : 'us';
     const first = convertAmount(scaled[0], p.unit, sys);
     const ratio = UNITS[p.unit].base / UNITS[first.unit].base;
     const values = scaled.map((v) => v * ratio);
-    // US cup/tbsp/tsp: cook-friendly formatting includes the unit (and may
-    // split fractional tbsp into "N tbsp + M tsp"), so do not append another.
     const cookVolume = sys === 'us' && (first.unit === 'cup' || first.unit === 'tbsp' || first.unit === 'tsp');
     if (cookVolume) {
       texts = values.map((v) => formatUsVolume(v, first.unit));
@@ -534,14 +627,132 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
 
   let qtyText = texts[0];
   if (texts.length === 2) {
-    const word = /to/i.test(p.separator);
-    const padded = word || texts.some((t) => /[ /]/.test(t));
-    qtyText = word ? `${texts[0]} to ${texts[1]}` : padded ? `${texts[0]} - ${texts[1]}` : `${texts[0]}-${texts[1]}`;
+    qtyText = joinRangeTexts(texts[0], texts[1], p.separator);
   }
-  const output = p.prefix + qtyText + unitText + rest;
-  // Last-resort guard: never show NaN / Infinity, keep the line as typed.
+  let output = p.prefix + qtyText + unitText + rest;
+  output = fixPinchOf(output);
   if (/NaN|Infinity/.test(qtyText)) return { ...base, flagged: true, reason: 'no-quantity' };
   return { ...base, output, scaled: true };
+}
+
+/** "a pinch salt" → "a pinch of salt"; leave "a pinch of …" / "a pinch to …" alone. */
+function fixPinchOf(text) {
+  return text.replace(/\ba pinch (?!of\b|to\b)(?=[A-Za-z])/gi, 'a pinch of ');
+}
+
+/**
+ * Join two formatted range ends. Same simple unit → "X-Y unit" (keep compact
+ * separator when the user used "-"); compounds use " to ".
+ */
+function joinRangeTexts(a, b, separator) {
+  if (a === 'a pinch' && b === 'a pinch') return 'a pinch';
+  const userTo = separator && /to/i.test(separator);
+  const simple = /^(.+) (tsp|tbsp|cups?)$/;
+  const ma = simple.exec(a);
+  const mb = simple.exec(b);
+  if (
+    ma && mb
+    && !a.includes('+') && !b.includes('+')
+    && ma[2].replace(/s$/, '') === mb[2].replace(/s$/, '')
+  ) {
+    const unit = ma[2];
+    const u = Number(parseQuantity(mb[1])) > 1 && unit === 'cup' ? 'cups' : unit;
+    // Qty itself must be a plain fraction/mixed number (no nested unit words).
+    if (!/\b(tsp|tbsp|cups?)\b/i.test(ma[1]) && !/\b(tsp|tbsp|cups?)\b/i.test(mb[1])) {
+      if (userTo) return `${ma[1]} to ${mb[1]} ${u}`;
+      return `${ma[1]}-${mb[1]} ${u}`;
+    }
+  }
+  // Unitless counts (and similar): preserve the user's separator.
+  if (!/ /.test(a) && !/ /.test(b)) {
+    if (userTo) return `${a} to ${b}`;
+    return `${a}-${b}`;
+  }
+  // Compounds or mismatched units: always " to ".
+  return `${a} to ${b}`;
+}
+
+/** True when a raw qty string uses 3/8, 5/8, 7/8, or 1/8 of a non-tsp unit. */
+function hasForbiddenEighth(p) {
+  if (!p.unit) return false;
+  const eighths = /(?:^|\s)(?:[357]\/8|⅜|⅝|⅞)(?:\s|$)/u;
+  const eighthTspOnly = /(?:^|\s)(?:1\/8|⅛)(?:\s|$)/u;
+  for (const raw of p.rawQuantities) {
+    if (eighths.test(raw)) return true;
+    if (eighthTspOnly.test(raw) && p.unit !== 'tsp') return true;
+  }
+  return false;
+}
+
+/**
+ * Format a US volume range. Try shared units cup→tbsp→tsp where BOTH ends are
+ * "clean" in that unit (no fractional tbsp other than 1/2; no compound).
+ * Example: 1/3–1/2 cup × 1/2 → tbsp would be 2 2/3–4, so skip to tsp → 8–12 tsp.
+ * @param {number} a amount in `fromUnit`
+ * @param {number} b
+ * @param {string} fromUnit
+ * @param {string|null} separator
+ */
+function formatUsVolumeRange(a, b, fromUnit, separator) {
+  const toTsp = (v, u) => v * (u === 'cup' ? 48 : u === 'tbsp' ? 3 : 1);
+  const aTsp = toTsp(a, fromUnit);
+  const bTsp = toTsp(b, fromUnit);
+  const ladder = ['cup', 'tbsp', 'tsp'];
+  const start = Math.max(0, ladder.indexOf(fromUnit));
+  for (let i = start; i < ladder.length; i++) {
+    const unit = ladder[i];
+    const per = unit === 'cup' ? 48 : unit === 'tbsp' ? 3 : 1;
+    const av = aTsp / per;
+    const bv = bTsp / per;
+    if (isCleanRangeEnd(av, unit) && isCleanRangeEnd(bv, unit)) {
+      const aText = formatCleanRangeQty(av, unit);
+      const bText = formatCleanRangeQty(bv, unit);
+      const unitLabel_ = unit === 'cup'
+        ? (bv > 1 ? 'cups' : 'cup')
+        : unit;
+      const userTo = separator && /to/i.test(separator);
+      const sep = userTo ? ' to ' : '-';
+      return `${aText}${sep}${bText} ${unitLabel_}`;
+    }
+  }
+  // Fallback: format each end separately, join with "to" when needed.
+  const ta = formatFromTsp(aTsp);
+  const tb = formatFromTsp(bTsp);
+  return joinRangeTexts(ta, tb, separator);
+}
+
+/** Clean range end: whole, cook cup frac, half-tbsp (if allowed), or cook tsp. No 2/3 tbsp. */
+function isCleanRangeEnd(value, unit) {
+  if (!Number.isFinite(value) || value <= 0) return false;
+  if (unit === 'cup') {
+    const c = roundCook(value);
+    return Math.abs(c - value) < 1e-6;
+  }
+  if (unit === 'tbsp') {
+    const whole = Math.floor(value + 1e-9);
+    const frac = value - whole;
+    if (Math.abs(frac) < 1e-6) return true;
+    if (ALLOW_HALF_TBSP && Math.abs(frac - 0.5) < 1e-6) return true;
+    return false; // thirds/quarters of tbsp are NOT clean
+  }
+  // tsp: exact cook fraction or exact 1/8
+  if (Math.abs(value - 1 / 8) < 1e-6) return true;
+  const r = roundCook(value);
+  return Math.abs(r - value) < 1e-6;
+}
+
+function formatCleanRangeQty(value, unit) {
+  if (unit === 'cup') return formatCookFrac(roundCook(value));
+  if (unit === 'tbsp') {
+    const whole = Math.floor(value + 1e-9);
+    const frac = value - whole;
+    if (ALLOW_HALF_TBSP && Math.abs(frac - 0.5) < 1e-6) {
+      return whole === 0 ? '1/2' : `${whole} 1/2`;
+    }
+    return String(Math.round(value));
+  }
+  if (value >= PINCH_CUTOFF_TSP && value < 1 / 8) return '1/8';
+  return formatCookFrac(roundCook(value));
 }
 
 function assertFactor(factor) {

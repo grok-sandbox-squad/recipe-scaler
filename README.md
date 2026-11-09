@@ -1,6 +1,6 @@
 # Recipe Scaler
 
-Paste an ingredient list, set the original and target servings, and see every amount rescaled as you type. Amounts are shown as friendly kitchen fractions (`1 1/2 cups`, not `1.5 cups`), units are switched to whatever reads better (48 tsp becomes 1 cup), and you can show the result in US or metric units. US volumes follow a cook rounding rule: exact clean cups first (`12 tbsp` → `3/4 cup`), else whole tablespoons below 1 cup (`5/8 cup` → `10 tbsp`), else a split (`1/3 cup` halved → `2 tbsp + 2 tsp`). Tsp amounts use only common cook fractions (1/4, 1/3, 1/2, 2/3, 3/4), plus standalone `1/8 tsp`. Amounts below 1/8 tsp show as `a pinch`.
+Paste an ingredient list, set the original and target servings, and see every amount rescaled as you type. Amounts are shown as friendly kitchen fractions (`1 1/2 cups`, not `1.5 cups`), units are switched to whatever reads better (48 tsp becomes 1 cup), and you can show the result in US or metric units. US volumes follow a cook rounding rule: exact clean cups first, else whole tbsp below 1 cup (half-tbsp allowed), else a split. At ×1, typed cup/tbsp/tsp amounts are echoed unchanged (except forbidden eighth-cups). Ranges try a shared unit (cup→tbsp→tsp) when both ends are clean. Below 1/16 tsp → `a pinch of …`; 1/16–1/8 tsp → `1/8 tsp`.
 
 **Live site:** https://grok-sandbox-squad.github.io/recipe-scaler/
 
