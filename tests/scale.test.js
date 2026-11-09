@@ -191,7 +191,67 @@ test('simple count nouns gain or lose an "s" only when crossing 1', () => {
   assert.equal(out('1 tomato', 2), '2 tomato');
   assert.equal(out('1 glass', 2), '2 glass');
   assert.equal(out('2 potatoes', 0.5), '1 potatoes');
-  assert.equal(out('1 Egg', 2), '2 Egg');
   // Units are never touched by this rule.
   assert.equal(out('1 cup sugar', 2), '2 cups sugar');
+});
+
+test('zero amounts are kept unchanged and flagged (never NaN)', () => {
+  for (const [line, factor] of [['0 cups', 1], ['0 cups flour', 1], ['0.0 cup', 1], ['0.0 tbsp oil', 2], ['0 eggs', 3], ['0-1 cup', 2], ['0 g', 1]]) {
+    for (const system of ['us', 'metric']) {
+      const r = scaleLine(line, factor, { system });
+      assert.equal(r.output, line, line);
+      assert.equal(r.scaled, false, line);
+      assert.equal(r.flagged, true, line);
+      assert.equal(r.reason, 'zero-quantity', line);
+    }
+  }
+});
+
+test('space thousands separators are kept unchanged and flagged', () => {
+  for (const [line, factor] of [['1 000 g', 0.5], ['1 000 g', 1.5], ['1 000g', 1], ['12 500 ml', 2], ['- 2 000 g flour', 2]]) {
+    const r = scaleLine(line, factor);
+    assert.equal(r.output, line, line);
+    assert.equal(r.flagged, true, line);
+    assert.equal(r.reason, 'no-quantity', line);
+  }
+  // Mixed numbers still work.
+  assert.equal(out('1 1/2 cups flour', 2), '3 cups flour');
+  assert.equal(out('2 3/4 cup sugar', 1), '2 3/4 cups sugar');
+  assert.equal(out('1 ½ cups milk', 2), '3 cups milk');
+});
+
+test('"5. cup" is a malformed amount (no-quantity)', () => {
+  const r = scaleLine('5. cup', 2);
+  assert.equal(r.output, '5. cup');
+  assert.equal(r.reason, 'no-quantity');
+  assert.equal(scaleLine('1. Preheat the oven', 2).reason, 'not-an-ingredient');
+});
+
+test('plurals: singular at 1 or less, capitalization kept', () => {
+  assert.equal(out('1 eggs', 1), '1 egg');
+  assert.equal(out('2 Eggs', 0.5), '1 Egg');
+  assert.equal(out('1 Egg', 2), '2 Eggs');
+  assert.equal(out('1 egg', 1), '1 egg');
+  assert.equal(out('2 eggs', 1), '2 eggs');
+  assert.equal(out('1 EGG', 2), '2 EGG');
+});
+
+test('guard: odd inputs never produce NaN or Infinity', () => {
+  const lines = [
+    '0 cups', '0.0 cup', '0 g', '0-0 tbsp', '0 to 2 cups', '1/0 cup', '0/5 cup', '1 0/0 cup',
+    '1e5 cup', '1e400 g', '9'.repeat(400) + ' g', '.5 cup', '. cup', '½ ½ cup', '1 1/2/3 cup',
+    '1 000 g', '1,000 g', '1.5.2 g', '5. cup', '- 0 eggs', '3-0 cups', '0.0000001 tsp',
+    '1 cup', '1 tsp', '1 lb', '1 l', '1 gallon', 'NaN cups', 'Infinity g',
+  ];
+  for (const factor of [1e-12, 0.001, 0.5, 1, 3, 1e6, 1e300, Number.MAX_VALUE]) {
+    for (const system of ['us', 'metric']) {
+      for (const line of lines) {
+        const r = scaleLine(line, factor, { system });
+        const msg = `${line} x${factor} ${system} -> ${r.output}`;
+        if (/NaN|Infinity/.test(line)) assert.equal(r.output, line, msg);
+        else assert.doesNotMatch(r.output, /NaN|Infinity/, msg);
+        assert.ok(!(r.scaled && r.flagged), msg);
+      }
+    }
+  }
 });

@@ -27,8 +27,8 @@
  *                             scaled; the UI should mark it "not scaled".
  * @property {boolean} blank   True for empty / whitespace-only lines.
  * @property {string|null} reason Why a line was flagged
- *                             ('no-quantity' | 'not-an-ingredient' |
- *                             'non-scalable'), else null.
+ *                             ('no-quantity' | 'zero-quantity' |
+ *                             'not-an-ingredient' | 'non-scalable'), else null.
  */
 
 const UNICODE_FRACTIONS = {
@@ -50,7 +50,10 @@ const QTY_SRC =
 
 // A quantity must end cleanly: no trailing digit, slash, ".5", ",5" or "..",
 // so malformed numbers like "1.5.2" or "1,5" never partly match.
-const QTY_END = '(?![\\d/\u2044]|[.,]\\d|\\.\\.)';
+// A space plus exactly three digits ("1 000 g", "12 500 ml") is a thousands
+// separator we do not guess at, so it fails too. "1 1/2" still matches, because
+// the mixed-number form is tried first and consumes the whole fraction.
+const QTY_END = `(?![\\d/\u2044]|[.,]\\d|\\.\\.|[eE][+-]?\\d|\\s\\d{3}(?!\\d)|\\s*[${UNI}]|\\s+\\d+\\s*[/\u2044])`;
 
 /** Count words that are never scaled (the line is kept and flagged). */
 const NON_SCALABLE_RE = /^\s*(?:pinch(?:es)?|dash(?:es)?|smidgens?)(?![a-z])/i;
@@ -79,6 +82,12 @@ const UNITS = {
 const UNIT_SRC = Object.entries(UNITS)
   .map(([key, u]) => `(?<${key}>${u.re})`)
   .join('|');
+
+// "5. cup": a stray dot between the number and a unit is a malformed amount.
+const DOT_UNIT_RE = new RegExp(
+  `^[.)]\\s*(?:${Object.values(UNITS).map((u) => u.re).join('|')})(?![a-z])`,
+  'i',
+);
 
 const LINE_RE = new RegExp(
   `^(?<prefix>\\s*(?:[-*•]\\s+)?)` +
@@ -269,6 +278,10 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
   if (line.trim() === '') return { ...base, blank: true };
   const p = parseLine(line);
   if (!p) return { ...base, flagged: true, reason: 'no-quantity' };
+  if (!p.quantities.every(Number.isFinite)) return { ...base, flagged: true, reason: 'no-quantity' };
+  // "0 cups": nothing to scale; keep as typed rather than invent an amount.
+  if (p.quantities.some((q) => q === 0)) return { ...base, flagged: true, reason: 'zero-quantity' };
+  if (!p.unit && DOT_UNIT_RE.test(p.rest)) return { ...base, flagged: true, reason: 'no-quantity' };
   // "1. Preheat oven", "2) Mix", "350°F": a number, but not an amount.
   if (!p.unit && /^(?:[.)]\s|°|%)/u.test(p.rest)) {
     return { ...base, flagged: true, reason: 'not-an-ingredient' };
@@ -279,12 +292,13 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
   }
 
   const scaled = p.quantities.map((q) => q * factor);
+  if (!scaled.every(Number.isFinite)) return { ...base, flagged: true, reason: 'no-quantity' };
   let texts;
   let unitText = '';
   if (p.unit) {
     const sys = system === 'metric' ? 'metric' : 'us';
     const first = convertAmount(scaled[0], p.unit, sys);
-    const ratio = first.value / scaled[0];
+    const ratio = UNITS[p.unit].base / UNITS[first.unit].base;
     const values = scaled.map((v) => v * ratio);
     texts = values.map((v) => formatValue(v, first.unit));
     unitText = ' ' + unitLabel(first.unit, values[values.length - 1]);
@@ -301,7 +315,10 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
     const padded = word || texts.some((t) => /[ /]/.test(t));
     qtyText = word ? `${texts[0]} to ${texts[1]}` : padded ? `${texts[0]} - ${texts[1]}` : `${texts[0]}-${texts[1]}`;
   }
-  return { ...base, output: p.prefix + qtyText + unitText + rest, scaled: true };
+  const output = p.prefix + qtyText + unitText + rest;
+  // Last-resort guard: never show NaN / Infinity, keep the line as typed.
+  if (/NaN|Infinity/.test(qtyText)) return { ...base, flagged: true, reason: 'no-quantity' };
+  return { ...base, output, scaled: true };
 }
 
 function assertFactor(factor) {
@@ -310,9 +327,11 @@ function assertFactor(factor) {
   }
 }
 
-// Only a lone, simple, lowercase noun ("1 egg", "2 lemons, juiced") is
-// touched, and only when the amount crosses 1. Anything else is left as typed.
-const SIMPLE_NOUN_RE = /^(\s+)([a-z]{3,})(\s*(?:,.*)?)$/u;
+// Only a lone, simple noun ("1 egg", "2 Lemons, juiced") is touched: it is
+// singularized when the scaled amount is 1 or less, and pluralized only when
+// the amount crosses from 1 or less to more than 1. The first letter's case is
+// kept. Anything else is left as typed.
+const SIMPLE_NOUN_RE = /^(\s+)([A-Za-z][a-z]{2,})(\s*(?:,.*)?)$/u;
 
 function adjustPlural(rest, before, after) {
   const m = SIMPLE_NOUN_RE.exec(rest);
@@ -320,9 +339,8 @@ function adjustPlural(rest, before, after) {
   const [, space, word, tail] = m;
   const wasPlural = friendlyValue(before) > 1;
   const isPlural = friendlyValue(after) > 1;
-  if (wasPlural === isPlural) return rest;
   if (isPlural) {
-    if (/(?:s|x|z|ch|sh|y|o)$/.test(word)) return rest;
+    if (wasPlural || /(?:s|x|z|ch|sh|y|o)$/.test(word)) return rest;
     return space + word + 's' + tail;
   }
   if (!/[^s]s$/.test(word) || /(?:oes|ches|shes|xes|ies|us|is)$/.test(word)) return rest;
