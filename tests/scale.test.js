@@ -120,7 +120,7 @@ test('US weight: oz up to 16, then lb; metric input converts to US', () => {
   assert.equal(out('8 oz cheese', 2), '1 lb cheese');
   assert.equal(out('10 oz pasta', 2), '1 1/4 lb pasta');
   assert.equal(out('6 oz spinach'), '6 oz spinach');
-  assert.equal(out('250 ml water'), '1 cup water');
+  assert.equal(out('250 ml water'), '1 cup + 1 tbsp water');
   assert.equal(out('500 g flour'), '1 1/8 lb flour');
 });
 
@@ -270,26 +270,43 @@ test('D-new: fractional tbsp splits into tbsp + tsp; clean cups preferred', () =
 });
 
 test('D-new: tsp uses only cook fractions; 1/8 tsp standalone only', () => {
-  // Reviewer probe cases that used to leak eighths.
   assert.equal(out('1 tbsp oil', 1 / 8), '1/3 tsp oil');
   assert.equal(out('1 tsp salt', 5 / 8), '2/3 tsp salt');
-  assert.equal(out('1 tsp salt', 7 / 8), '1 tsp salt'); // near-whole carries up
+  assert.equal(out('1 tsp salt', 7 / 8), '1 tsp salt');
   assert.equal(out('1 tbsp oil', 0.2), '2/3 tsp oil');
   assert.equal(out('1 tbsp oil', 0.3), '1 tsp oil');
-  assert.equal(out('1 tbsp oil', 5 / 8), '2 tsp oil'); // 1 7/8 → 2 tsp
+  assert.equal(out('1 tbsp oil', 5 / 8), '2 tsp oil');
   assert.equal(out('1 cup flour', 0.07), '1 tbsp + 1/3 tsp flour');
-  // Standalone 1/8 tsp is allowed; leftover after tbsp never shows 1/8.
   assert.equal(out('1/4 tsp salt', 0.5), '1/8 tsp salt');
   assert.equal(out('1 tsp salt', 0.1), 'a pinch salt');
   assert.doesNotMatch(out('1 tbsp oil', 1 / 8), /\+ 1\/8 tsp|3\/8|5\/8|7\/8/);
 });
 
-test('D-new: cup eighths split into cook cup + tbsp', () => {
-  assert.equal(out('3/8 cup milk'), '1/4 cup + 2 tbsp milk');
-  assert.equal(out('5/8 cup sugar'), '1/2 cup + 2 tbsp sugar');
-  assert.equal(out('7/8 cup flour'), '3/4 cup + 2 tbsp flour');
-  assert.equal(out('3 tbsp butter', 2), '1/4 cup + 2 tbsp butter');
-  assert.equal(out('1 1/4 cups milk', 0.5), '1/2 cup + 2 tbsp milk');
+test('D-new rounding rule: clean cups, else whole tbsp below 1 cup, else split', () => {
+  // Required explicit cases
+  assert.equal(out('6 tbsp oil'), '6 tbsp oil');
+  assert.equal(out('5/8 cup sugar'), '10 tbsp sugar');
+  assert.equal(out('3 tbsp oil'), '3 tbsp oil');
+  assert.equal(out('12 tbsp oil'), '3/4 cup oil');
+  // Step 1 clean cups
+  assert.equal(out('4 tbsp oil'), '1/4 cup oil');
+  assert.equal(out('8 tbsp oil'), '1/2 cup oil');
+  assert.equal(out('16 tbsp oil'), '1 cup oil');
+  assert.equal(out('1 1/3 cups flour'), '1 1/3 cups flour');
+  // Step 2 whole tbsp below 1 cup (including former eighth-cups)
+  assert.equal(out('3/8 cup milk'), '6 tbsp milk');
+  assert.equal(out('7/8 cup flour'), '14 tbsp flour');
+  assert.equal(out('7 tbsp oil'), '7 tbsp oil');
+  assert.equal(out('10 tbsp oil'), '10 tbsp oil');
+  assert.equal(out('11 tbsp oil'), '11 tbsp oil');
+  assert.equal(out('14 tbsp oil'), '14 tbsp oil');
+  assert.equal(out('15 tbsp oil'), '15 tbsp oil');
+  // Step 3 splits
+  assert.equal(out('1/3 cup flour', 0.5), '2 tbsp + 2 tsp flour');
+  assert.equal(out('10 tsp salt'), '3 tbsp + 1 tsp salt');
+  assert.equal(out('1 1/8 cup flour'), '1 cup + 2 tbsp flour');
+  assert.equal(out('3 tbsp butter', 2), '6 tbsp butter');
+  assert.equal(out('1 1/4 cups milk', 0.5), '10 tbsp milk');
 });
 
 test('D-new: tiny US volumes below 1/8 tsp become "a pinch"', () => {
@@ -301,10 +318,6 @@ test('D-new: tiny US volumes below 1/8 tsp become "a pinch"', () => {
 });
 
 test('D-new: round-trip — displayed US volume within 1.5 tsp or 6% of exact', () => {
-  // "a pinch" = 1/16 tsp (midpoint of the (0, 1/8) band).
-  // Worst observed over a broad sweep: abs ≈ 3 tsp only when relative ≤ 6%
-  // (cup snap boundary); worst relative ≈ 33% on sub-teaspoon amounts.
-  // Tolerance kept honest: abs ≤ 1.5 tsp OR relative ≤ 6%.
   function toTsp(qty) {
     if (qty === 'a pinch') return 1 / 16;
     let total = 0;
@@ -350,7 +363,6 @@ test('D-new: round-trip — displayed US volume within 1.5 tsp or 6% of exact', 
       );
     }
   }
-  // Documented bounds from this sweep (keep the assert above as the contract).
   assert.ok(worstAbs <= 3, `worst abs ${worstAbs}`);
   assert.ok(worstRel <= 0.34, `worst rel ${worstRel}`);
 });
@@ -379,57 +391,44 @@ test('D-new: sweep — no volume eighths except standalone 1/8 tsp', () => {
   }
 });
 
-
-test('D-new: whole tbsp stay tbsp unless main would show a clean/eighth cup', () => {
-  // Regression: these must NOT become cup + tbsp.
-  assert.equal(out('7 tbsp oil'), '7 tbsp oil');
-  assert.equal(out('15 tbsp oil'), '15 tbsp oil');
-  assert.equal(out('2 cup flour', 0.47), '15 tbsp flour');
-  assert.equal(out('9 tbsp oil'), '9 tbsp oil');
-  assert.equal(out('13 tbsp oil'), '13 tbsp oil');
-  // Main shows eighth-cups for these; D-new rewrites the eighth only.
-  assert.equal(out('6 tbsp oil'), '1/4 cup + 2 tbsp oil');
-  assert.equal(out('10 tbsp oil'), '1/2 cup + 2 tbsp oil');
-  assert.equal(out('14 tbsp oil'), '3/4 cup + 2 tbsp oil');
-  // Main's clean cups stay cups.
-  assert.equal(out('4 tbsp oil'), '1/4 cup oil');
-  assert.equal(out('8 tbsp oil'), '1/2 cup oil');
-  assert.equal(out('12 tbsp oil'), '3/4 cup oil');
-  assert.equal(out('16 tbsp oil'), '1 cup oil');
-  // Fractional tbsp still splits; 10 tsp is fine as tbsp + tsp.
-  assert.equal(out('10 tsp salt'), '3 tbsp + 1 tsp salt');
-});
-
-test('D-new: sweep — whole N tbsp at x1 matches main (eighth-cups rewritten)', () => {
-  // For N=1..15: output is "N tbsp" or a single clean unit main would pick,
-  // or the D-new eighth-cup rewrite (never "1/4 cup + 3 tbsp" style leftovers of 1 or 3).
+test('D-new: sweep — whole N tbsp at x1: cups only for 4/8/12 (and 16→1 cup)', () => {
   const expected = {
     1: '1 tbsp', 2: '2 tbsp', 3: '3 tbsp', 4: '1/4 cup', 5: '5 tbsp',
-    6: '1/4 cup + 2 tbsp', 7: '7 tbsp', 8: '1/2 cup', 9: '9 tbsp',
-    10: '1/2 cup + 2 tbsp', 11: '2/3 cup', 12: '3/4 cup', 13: '13 tbsp',
-    14: '3/4 cup + 2 tbsp', 15: '15 tbsp',
+    6: '6 tbsp', 7: '7 tbsp', 8: '1/2 cup', 9: '9 tbsp',
+    10: '10 tbsp', 11: '11 tbsp', 12: '3/4 cup', 13: '13 tbsp',
+    14: '14 tbsp', 15: '15 tbsp',
   };
   for (let n = 1; n <= 15; n++) {
     assert.equal(out(`${n} tbsp x`), expected[n] + ' x', `${n} tbsp`);
   }
+  assert.equal(out('16 tbsp x'), '1 cup x');
 });
 
-test('D-new: sweep — x1 identity for inputs main renders without eighths or fractional tbsp', () => {
-  // Unscaled whole-unit inputs that main already shows cleanly must be unchanged.
-  // Only inputs main already renders as themselves (no unit promotion, no eighths).
+test('D-new: sweep — x1 identity for clean cook inputs (no eighths, no fractional tbsp)', () => {
   const stable = [
     '1 tsp', '1/4 tsp', '1/3 tsp', '1/2 tsp', '2/3 tsp', '3/4 tsp', '2 tsp',
-    '1 tbsp', '2 tbsp', '3 tbsp', '5 tbsp', '7 tbsp', '9 tbsp', '13 tbsp', '15 tbsp',
+    '1 tbsp', '2 tbsp', '3 tbsp', '5 tbsp', '6 tbsp', '7 tbsp', '9 tbsp', '10 tbsp',
+    '11 tbsp', '13 tbsp', '14 tbsp', '15 tbsp',
     '1/4 cup', '1/3 cup', '1/2 cup', '2/3 cup', '3/4 cup', '1 cup', '2 cups',
     '1 1/2 cups', '1 1/4 cups', '1 1/3 cups',
   ];
   for (const line of stable) {
     assert.equal(out(line), line, line);
   }
-  // Eighth-cup inputs are intentionally rewritten (not identity).
-  assert.equal(out('3/8 cup'), '1/4 cup + 2 tbsp');
-  assert.equal(out('5/8 cup'), '1/2 cup + 2 tbsp');
-  assert.equal(out('7/8 cup'), '3/4 cup + 2 tbsp');
+  // Eighth-cups become whole tbsp under step 2 (not identity).
+  assert.equal(out('3/8 cup'), '6 tbsp');
+  assert.equal(out('5/8 cup'), '10 tbsp');
+  assert.equal(out('7/8 cup'), '14 tbsp');
+});
+
+test('D-new: ranges stay consistent; metric/weight unchanged', () => {
+  assert.equal(out('1-2 tbsp oil', 2), '2 tbsp - 1/4 cup oil');
+  assert.equal(out('1 to 2 tablespoons honey', 2), '2 tbsp to 1/4 cup honey');
+  assert.equal(out('2-3 cloves garlic', 2), '4-6 cloves garlic');
+  assert.equal(out('1 cup milk', 1, 'metric'), '237 ml milk');
+  assert.equal(out('8 oz cheese', 2), '1 lb cheese');
+  assert.equal(out('250 ml water'), '1 cup + 1 tbsp water');
+  assert.equal(out('⅓ cup flour', 0.5), '2 tbsp + 2 tsp flour');
 });
 
 test('D-new: attack odd scales and ugly outputs', () => {
@@ -447,10 +446,4 @@ test('D-new: attack odd scales and ugly outputs', () => {
   assert.doesNotMatch(out('1 cup water', 1e6), /NaN|Infinity/);
   assert.equal(out('1 cup water', 1 / 500), 'a pinch water');
   assert.equal(out('1 1/2 cups flour', 1 / 3), '1/2 cup flour');
-  assert.match(out('1-2 tbsp oil', 2), /tbsp|cup/);
-  assert.match(out('1 to 2 tsp salt', 3), /tbsp|tsp/);
-  assert.equal(out('1 cup milk', 1, 'metric'), '237 ml milk');
-  assert.equal(out('8 oz cheese', 2), '1 lb cheese');
-  assert.equal(out('⅓ cup flour', 0.5), '2 tbsp + 2 tsp flour');
-  assert.equal(out('250 ml water'), '1 cup water');
 });
