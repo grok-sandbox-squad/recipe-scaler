@@ -278,16 +278,15 @@ test('D-new: fractional tbsp splits into tbsp + tsp; clean cups preferred', () =
 });
 
 test('D-new: tsp uses quarter grid + 1/8; no 1/3 or 2/3 tsp when scaled', () => {
-  // 0.375 tsp → outside 5% of 1/4 and 1/2; nearest quarter (carry-up) → 1/2 tsp
-  assert.equal(out('1 tbsp oil', 1 / 8), '1/2 tsp oil');
-  assert.equal(out('1 tsp salt', 5 / 8), '3/4 tsp salt');
-  assert.equal(out('1 tsp salt', 7 / 8), '1 tsp salt');
+  // Equal-distance ties round DOWN (over-seasoning is worse).
+  assert.equal(out('1 tbsp oil', 1 / 8), '1/4 tsp oil'); // 0.375 → 1/4 not 1/2
+  assert.equal(out('1 tsp salt', 5 / 8), '1/2 tsp salt'); // 0.625 → 1/2 not 3/4
+  assert.equal(out('1 tsp salt', 7 / 8), '3/4 tsp salt'); // 0.875 → 3/4 not 1
   assert.equal(out('1 tbsp oil', 0.2), '1/2 tsp oil');
   assert.equal(out('1 tbsp oil', 0.3), '1 tsp oil');
-  assert.equal(out('1 tbsp oil', 5 / 8), '2 tsp oil');
+  assert.equal(out('1 tbsp oil', 5 / 8), '1 3/4 tsp oil'); // 1.875 midpoint → round DOWN
   assert.doesNotMatch(out('1 tbsp oil', 1 / 8), /1\/3 tsp|2\/3 tsp/);
   assert.doesNotMatch(out('1 tsp salt', 5 / 8), /1\/3 tsp|2\/3 tsp/);
-  // Compound leftovers snap to 1/4, 1/2, 3/4 (not 1/3).
   assert.equal(out('1 cup flour', 0.07), '1 tbsp + 1/4 tsp flour');
   assert.equal(out('1/4 tsp salt', 0.5), '1/8 tsp salt');
   assert.equal(out('1 tsp salt', 0.05), 'a pinch of salt');
@@ -484,6 +483,21 @@ test('D-new: metric/weight/attacks unchanged where required', () => {
   }
   assert.doesNotMatch(out('1 tbsp oil', 2 / 3), /2\/3 tbsp/);
   assert.equal(out('1 1/2 cups flour', 1 / 3), '1/2 cup flour');
+});
+
+test('D-new: equal-distance ties round DOWN; 1/16..1/8 band kept', () => {
+  // SL-confirmed examples
+  assert.equal(out('1 tbsp oil', 1 / 8), '1/4 tsp oil');
+  assert.equal(out('1 tsp salt', 5 / 8), '1/2 tsp salt');
+  // 1/16..1/8 → 1/8 tsp (explicit exception, may exceed 5%)
+  assert.equal(formatUsVolume(1 / 16, 'tsp'), '1/8 tsp');
+  assert.equal(formatUsVolume(0.07, 'tsp'), '1/8 tsp');
+  assert.equal(formatUsVolume(0.1, 'tsp'), '1/8 tsp');
+  assert.equal(formatUsVolume(0.124, 'tsp'), '1/8 tsp');
+  assert.equal(formatUsVolume(1 / 8, 'tsp'), '1/8 tsp');
+  assert.equal(formatUsVolume(1 / 16 - 1e-6, 'tsp'), 'a pinch');
+  // Within-5% equal-abs tie also rounds down
+  assert.equal(out('1.5 tbsp oil', 0.75), '1 tbsp + 1/4 tsp oil');
 });
 
 test('D-new: 5% snap — required examples', () => {

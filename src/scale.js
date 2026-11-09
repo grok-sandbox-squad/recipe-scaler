@@ -330,7 +330,8 @@ function unitLabel(unit, value) {
  * Build cook-friendly candidates, then pick the SIMPLEST within 5% relative
  * error of the true amount (relative to the candidate). Exact match wins.
  * Simplicity: single-unit < two-part combo; among singles, cup > tbsp > tsp;
- * then nearest (absolute tsp error); then larger candidate on a tie.
+ * then nearest (absolute tsp error); on an equal-distance tie, round DOWN
+ * (prefer the smaller candidate — over-seasoning is worse).
  * Never tsp-only for ≥1 tbsp. Below 1/16 tsp → pinch; 1/16..1/8 → 1/8 tsp
  * (explicit small-amount exception, may exceed 5%).
  *
@@ -406,7 +407,7 @@ function pickSnapCandidate(trueTsp) {
       const ae = absErr(a);
       const be = absErr(b);
       if (Math.abs(ae - be) > 1e-12) return ae - be;
-      return b.tsp - a.tsp; // carry-up on a tie
+      return a.tsp - b.tsp; // equal-distance tie → round DOWN
     });
   } else {
     // Outside 5%: under 1 tbsp stay on tsp grid (nearest); otherwise nearest combo.
@@ -423,7 +424,7 @@ function pickSnapCandidate(trueTsp) {
       if (Math.abs(ae - be) > 1e-12) return ae - be;
       if (a.parts !== b.parts) return a.parts - b.parts;
       if (a.unitRank !== b.unitRank) return a.unitRank - b.unitRank;
-      return b.tsp - a.tsp;
+      return a.tsp - b.tsp; // equal-distance tie → round DOWN
     });
   }
   return pool[0];
