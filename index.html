@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Recipe Scaler</title>
+  <meta name="description" content="Paste an ingredient list, change the servings, and see every amount rescaled with friendly kitchen fractions.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <h1>Recipe Scaler</h1>
+    <p class="tagline">Paste a recipe, change the servings, get the amounts rescaled.</p>
+  </header>
+
+  <main>
+    <form id="controls" class="panel" novalidate>
+      <h2 class="visually-hidden">Recipe and settings</h2>
+
+      <div class="field">
+        <label for="demo">Load a demo recipe</label>
+        <select id="demo" name="demo">
+          <option value="">Choose a made-up demo…</option>
+        </select>
+      </div>
+
+      <div class="servings">
+        <div class="field">
+          <label for="original">Original servings</label>
+          <input id="original" name="original" type="number" inputmode="decimal" min="0" step="any" value="4" required aria-describedby="servings-error">
+        </div>
+        <div class="field">
+          <label for="target">Target servings</label>
+          <input id="target" name="target" type="number" inputmode="decimal" min="0" step="any" value="6" required aria-describedby="servings-error">
+        </div>
+      </div>
+
+      <fieldset class="field units">
+        <legend>Units</legend>
+        <label class="choice"><input type="radio" name="system" value="us" checked> US (cups, tbsp, oz)</label>
+        <label class="choice"><input type="radio" name="system" value="metric"> Metric (ml, g)</label>
+      </fieldset>
+
+      <div class="field">
+        <label for="recipe">Ingredients (one per line)</label>
+        <textarea id="recipe" name="recipe" rows="12" spellcheck="false" autocomplete="off" placeholder="1 1/2 cups flour&#10;2 eggs&#10;pinch of salt"></textarea>
+      </div>
+    </form>
+
+    <section class="panel" aria-labelledby="output-heading">
+      <div class="output-head">
+        <h2 id="output-heading">Scaled recipe</h2>
+        <button type="button" id="copy" class="copy">Copy</button>
+      </div>
+      <p id="servings-error" class="error" role="alert" hidden></p>
+      <p id="summary" class="summary" aria-live="polite"></p>
+      <ol id="output" class="output"></ol>
+      <p class="legend"><span class="badge">not scaled</span> means the line is shown exactly as typed: it had no amount we could read, or the amount (like a pinch) should not be scaled.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Runs entirely in your browser. Nothing is sent or saved. <a href="https://github.com/grok-sandbox-squad/recipe-scaler">Source on GitHub</a></p>
+  </footer>
+</body>
+</html>
