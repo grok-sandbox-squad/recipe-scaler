@@ -332,8 +332,8 @@ function unitLabel(unit, value) {
  * Simplicity: single-unit < two-part combo; among singles, cup > tbsp > tsp;
  * then nearest (absolute tsp error); on an equal-distance tie, round DOWN
  * (prefer the smaller candidate — over-seasoning is worse).
- * Never tsp-only for ≥1 tbsp. Below 1/16 tsp → pinch; 1/16..1/8 → 1/8 tsp
- * (explicit small-amount exception, may exceed 5%).
+ * Never tsp-only for ≥1 tbsp. Standalone 1/3 and 2/3 tsp allowed; never 1/3 or 2/3 tbsp.
+ * Below 1/16 tsp → pinch; 1/16..1/8 → 1/8 tsp (explicit exception, may exceed 5%).
  *
  * @param {number} value Amount in `unit`.
  * @param {'cup'|'tbsp'|'tsp'} unit
@@ -389,18 +389,27 @@ function pickSnapCandidate(trueTsp) {
   if (!cands.length) return null;
 
   const absErr = (c) => Math.abs(c.tsp - trueTsp);
-  const relErr = (c) => (c.tsp < 1e-12 ? Infinity : absErr(c) / c.tsp);
+  // Accept if within 5% of the candidate OR of the true amount (either direction),
+  // so 0.95→1 cup (cand-rel) and near-misses like 14.2 tsp→4.5 tbsp (true-rel) both qualify.
+  const withinTol = (c) => {
+    const a = absErr(c);
+    if (c.tsp > 1e-12 && a / c.tsp <= SNAP_REL + 1e-12) return true;
+    if (trueTsp > 1e-12 && a / trueTsp <= SNAP_REL + 1e-12) return true;
+    return false;
+  };
 
-  const exact = cands.filter((c) => absErr(c) < 1e-9);
-  const within = cands.filter((c) => relErr(c) <= SNAP_REL + 1e-12);
-  const inBand = exact.length ? exact : within;
-  const fallback = !inBand.length;
+  // Exact is already in `within` (rel 0). Do NOT prefer the exact-only pool —
+  // a single unit within 5% beats any combo, exact or not (SL final).
+  // "Exact wins" only among equally simple candidates (same parts + unitRank),
+  // which falls out of sorting by absErr after parts/unitRank.
+  const within = cands.filter(withinTol);
+  const fallback = !within.length;
 
-  // Within 5% (or exact): simplest first, then larger unit, then nearest.
+  // Within 5%: single before combo, then cup>tbsp>tsp, then nearest, then round DOWN.
   // Outside 5%: nearest combo (else nearest anything) by absolute error first.
   let pool;
   if (!fallback) {
-    pool = inBand;
+    pool = within;
     pool.sort((a, b) => {
       if (a.parts !== b.parts) return a.parts - b.parts;
       if (a.unitRank !== b.unitRank) return a.unitRank - b.unitRank;
@@ -457,9 +466,11 @@ function buildSnapCandidates(trueTsp) {
     return cands;
   }
 
-  // --- single tsp (only when amount < 1 tbsp); quarters + standalone 1/8; NO 1/3 or 2/3 ---
+  // --- single tsp (only when amount < 1 tbsp): 1/8, quarters, and standalone 1/3 & 2/3 ---
   if (trueTsp < 3 - 1e-9) {
     add(1 / 8, '1/8 tsp', 1, 2);
+    add(1 / 3, '1/3 tsp', 1, 2);
+    add(2 / 3, '2/3 tsp', 1, 2);
     for (let q = 1; q <= 11; q++) {
       const v = q * 0.25; // 0.25 .. 2.75
       if (v >= 3 - 1e-9) break;
@@ -632,14 +643,13 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
   // 1/8 of a non-tsp unit). Half-tbsp and even "1 1/3 tbsp" ARE echoed at
   // x1 (thirds only split when scaled). Counts/weights/metric still process.
   const cookUnit = p.unit === 'cup' || p.unit === 'tbsp' || p.unit === 'tsp';
-  const zeroLower = p.quantities.length === 2 && p.quantities[0] === 0;
   if (
     Math.abs(factor - 1) < 1e-15
     && system !== 'metric'
     && cookUnit
     && !hasForbiddenEighth(p)
-    && !zeroLower
   ) {
+    // Includes ranges with a 0 lower end (echo "0-1 tsp" unchanged at ×1).
     return { ...base, output: line, scaled: true };
   }
 
@@ -762,66 +772,123 @@ function hasForbiddenEighth(p) {
  * @param {string|null} separator
  * @param {{ inputLowerZero?: boolean }} [opts]
  */
+/** Count of range outputs that used the 10% shared-unit widening (diagnostics). */
+export let RANGE_WIDEN_10_COUNT = 0;
+
 function formatUsVolumeRange(a, b, fromUnit, separator, opts = {}) {
   const toTsp = (v, u) => v * (u === 'cup' ? 48 : u === 'tbsp' ? 3 : 1);
   const aTspRaw = Math.max(0, toTsp(a, fromUnit));
   const bTspRaw = Math.max(0, toTsp(b, fromUnit));
   const userTo = separator && /to/i.test(separator);
 
-  // R3: input lower bound was 0 → "up to X"
+  // R3: input lower bound was 0 → "up to X" (×1 echo handled in scaleLine)
   if (opts.inputLowerZero || a <= 0) {
     return `up to ${formatFromTsp(bTspRaw)}`;
   }
 
-  // Snap each end first (5% rule), then apply R1 on the snapped amounts.
-  const ca = pickSnapCandidate(aTspRaw);
-  const cb = pickSnapCandidate(bTspRaw);
-  const ta = ca ? ca.text : formatFromTsp(aTspRaw);
-  const tb = cb ? cb.text : formatFromTsp(bTspRaw);
-  const aTsp = ca ? ca.tsp : aTspRaw;
-  const bTsp = cb ? cb.tsp : bTspRaw;
+  // Pinch band short-circuit on raw ends
+  if (aTspRaw < PINCH_CUTOFF_TSP && bTspRaw < PINCH_CUTOFF_TSP) return 'a pinch';
+  if (aTspRaw < PINCH_CUTOFF_TSP) return `a pinch to ${formatFromTsp(bTspRaw)}`;
 
-  // R3 / pinch band on snapped ends
-  if (ta === 'a pinch' || ta.startsWith('a pinch')) {
-    if (tb === 'a pinch' || tb.startsWith('a pinch')) return 'a pinch';
-    return `a pinch to ${tb}`;
-  }
-
-  // R1: try input unit first, then tbsp. Never tsp when an end ≥ 1 tbsp.
   /** @type {string[]} */
   const ladder = [];
   if (fromUnit === 'cup' || fromUnit === 'tbsp' || fromUnit === 'tsp') ladder.push(fromUnit);
   if (!ladder.includes('tbsp')) ladder.push('tbsp');
-  const bothUnderTbsp = aTsp < 3 - 1e-9 && bTsp < 3 - 1e-9;
-  if (bothUnderTbsp && !ladder.includes('tsp')) ladder.push('tsp');
+  if (aTspRaw < 3 - 1e-9 && bTspRaw < 3 - 1e-9 && !ladder.includes('tsp')) ladder.push('tsp');
 
-  for (const unit of ladder) {
-    if (unit === 'tsp' && (aTsp >= 3 - 1e-9 || bTsp >= 3 - 1e-9)) continue;
-    // Only share a unit when BOTH snapped ends are pure single-unit of that kind
-    // (or cleanly re-expressible as that unit with no combo).
-    const per = unit === 'cup' ? 48 : unit === 'tbsp' ? 3 : 1;
-    const av = aTsp / per;
-    const bv = bTsp / per;
-    if (isCleanRangeEnd(av, unit) && isCleanRangeEnd(bv, unit)) {
-      // Reject if a snapped end was a combo unless that combo equals the clean single.
-      if ((ta.includes('+') && !Number.isInteger(Math.round(av * 1e6) / 1e6 * 0 + 1)) ) {
-        /* keep checking cleanliness via values */ void 0;
-      }
-      const aText = formatCleanRangeQty(av, unit);
-      const bText = formatCleanRangeQty(bv, unit);
-      if (!aText || aText === '0' || parseQuantity(aText) === 0) break;
-      const unitLabel_ = unit === 'cup' ? (bv > 1 ? 'cups' : 'cup') : unit;
-      // If either snapped text is a combo that is NOT just this clean single, skip —
-      // unless the clean re-expression matches the snapped magnitude exactly (always true here).
-      // Prefer shared form whenever both values are clean in this unit.
-      if (aText === bText) return `${aText} ${unitLabel_}`; // R2
-      const sep = userTo ? ' to ' : '-';
-      return `${aText}${sep}${bText} ${unitLabel_}`;
+  // R1 first pass: shared single unit within 5% for BOTH raw ends.
+  const shared5 = trySharedRangeUnit(aTspRaw, bTspRaw, ladder, SNAP_REL, userTo);
+  if (shared5) return shared5;
+
+  // Preview per-end snaps to decide whether 10% widening helps.
+  const ca = pickSnapCandidate(aTspRaw);
+  const cb = pickSnapCandidate(bTspRaw);
+  const ta = ca ? ca.text : formatFromTsp(aTspRaw);
+  const tb = cb ? cb.text : formatFromTsp(bTspRaw);
+  const fallbackJoin = (ta === 'a pinch' || ta.startsWith('a pinch'))
+    ? (tb === 'a pinch' || tb.startsWith('a pinch') ? 'a pinch' : `a pinch to ${tb}`)
+    : joinRangeTexts(ta, tb, ' to ');
+  const fallbackIsSharedSingle = /^[\d /]+(-| to )[\d /]+ (tsp|tbsp|cups?)$/.test(fallbackJoin)
+    || /^[\d /]+ (tsp|tbsp|cups?)$/.test(fallbackJoin);
+  const bothCombos = ta.includes('+') && tb.includes('+');
+
+  // Widen to 10% when fallback would not be a clean shared single-unit range
+  // (covers combos-at-both-ends and mixed combo/single splits).
+  if (!fallbackIsSharedSingle || bothCombos) {
+    const shared10 = trySharedRangeUnit(aTspRaw, bTspRaw, ladder, 0.10, userTo);
+    if (shared10) {
+      RANGE_WIDEN_10_COUNT += 1;
+      return shared10;
     }
   }
 
-  // Fallback: each snapped end as already formatted; join with " to ".
-  return joinRangeTexts(ta, tb, ' to ');
+  return fallbackJoin;
+}
+
+/**
+ * Try to express both range ends in one shared single unit within `tol`.
+ * Ladder order = caller's (upper/input unit first, then tbsp, then tsp if allowed).
+ * @returns {string|null}
+ */
+function trySharedRangeUnit(aTsp, bTsp, ladder, tol, userTo) {
+  for (const unit of ladder) {
+    if (unit === 'tsp' && (aTsp >= 3 - 1e-9 || bTsp >= 3 - 1e-9)) continue;
+    // cups only when both ends are at least ~1/4 cup territory (avoid tiny→cup)
+    if (unit === 'cup' && aTsp < 12 * (1 - tol) - 1e-9) continue;
+    const lo = bestGridInUnit(aTsp, unit, tol);
+    const hi = bestGridInUnit(bTsp, unit, tol);
+    if (!lo || !hi) continue;
+    const unitLabel_ = unit === 'cup' ? (hi.v > 1 ? 'cups' : 'cup') : unit;
+    if (lo.text === hi.text) return `${lo.text} ${unitLabel_}`;
+    const sep = userTo ? ' to ' : '-';
+    return `${lo.text}${sep}${hi.text} ${unitLabel_}`;
+  }
+  return null;
+}
+
+/**
+ * Nearest cook-grid value in `unit` within relative tolerance of trueTsp.
+ * Ties round DOWN. Returns { v, text } or null.
+ */
+function bestGridInUnit(trueTsp, unit, tol) {
+  const per = unit === 'cup' ? 48 : unit === 'tbsp' ? 3 : 1;
+  /** @type {number[]} */
+  let vals = [];
+  if (unit === 'cup') {
+    for (let w = 0; w <= 40; w++) {
+      for (const [f] of COOK_FRACTIONS) {
+        if (f === 1) continue;
+        const c = w + f;
+        if (c >= 1 / 4 - 1e-9) vals.push(c);
+      }
+      if (w >= 1) vals.push(w);
+    }
+  } else if (unit === 'tbsp') {
+    const step = ALLOW_HALF_TBSP ? 0.5 : 1;
+    for (let t = step; t <= 40 + 1e-9; t += step) vals.push(t);
+  } else {
+    vals.push(1 / 8, 1 / 3, 2 / 3);
+    for (let q = 1; q <= 11; q++) vals.push(q * 0.25);
+  }
+  let best = null;
+  for (const v of vals) {
+    if (!(v > 0)) continue;
+    if (unit === 'tsp' && v >= 3 - 1e-9) continue;
+    const tsp = v * per;
+    const abs = Math.abs(tsp - trueTsp);
+    const relC = abs / tsp;
+    const relT = trueTsp > 1e-12 ? abs / trueTsp : Infinity;
+    if (relC > tol + 1e-12 && relT > tol + 1e-12) continue;
+    if (
+      !best
+      || abs < best.abs - 1e-12
+      || (Math.abs(abs - best.abs) < 1e-12 && v < best.v - 1e-12)
+    ) {
+      best = { v, abs, tsp };
+    }
+  }
+  if (!best) return null;
+  return { v: best.v, text: formatCleanRangeQty(best.v, unit) };
 }
 
 /** Clean range end: cook cup frac, whole/half tbsp, or quarter/1/8 tsp. No 1/3 or 2/3 tsp/tbsp. */
@@ -838,8 +905,9 @@ function isCleanRangeEnd(value, unit) {
     if (ALLOW_HALF_TBSP && Math.abs(frac - 0.5) < 1e-6) return true;
     return false;
   }
-  // tsp: 1/8 or whole/quarter only (no 1/3, 2/3)
+  // tsp: 1/8, quarters, or standalone 1/3 / 2/3
   if (Math.abs(value - 1 / 8) < 1e-6) return true;
+  if (Math.abs(value - 1 / 3) < 1e-6 || Math.abs(value - 2 / 3) < 1e-6) return true;
   const q = Math.round(value * 4) / 4;
   return Math.abs(q - value) < 1e-6 && q > 0;
 }
@@ -856,6 +924,8 @@ function formatCleanRangeQty(value, unit) {
   }
   if (Math.abs(value - 1 / 8) < 1e-6) return '1/8';
   if (value >= PINCH_CUTOFF_TSP && value < 1 / 8) return '1/8';
+  if (Math.abs(value - 1 / 3) < 1e-6) return '1/3';
+  if (Math.abs(value - 2 / 3) < 1e-6) return '2/3';
   const q = Math.round(value * 4) / 4;
   if (q <= 0) return '1/8';
   return formatQuarterTsp(q);
