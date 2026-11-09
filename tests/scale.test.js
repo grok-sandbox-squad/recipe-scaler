@@ -100,7 +100,7 @@ test('numbered steps and temperatures are not scaled', () => {
 
 test('blank lines are preserved and not flagged', () => {
   const r = scaleRecipe('2 cups flour\n\n   \n1 egg', { originalServings: 2, targetServings: 4 });
-  assert.equal(r.text, '4 cups flour\n\n   \n2 egg');
+  assert.equal(r.text, '4 cups flour\n\n   \n2 eggs');
   assert.equal(r.lines[1].blank, true);
   assert.equal(r.lines[1].flagged, false);
   assert.equal(r.lines[2].blank, true);
@@ -140,4 +140,58 @@ test('scaleRecipe: factor, line results, invalid servings', () => {
   assert.equal(r.lines[1].flagged, true);
   assert.throws(() => scaleFactor(0, 4), RangeError);
   assert.throws(() => scaleRecipe('1 egg', { originalServings: 2, targetServings: -1 }), RangeError);
+});
+
+test('malformed numbers are kept unchanged and flagged', () => {
+  for (const [line, factor] of [
+    ['1.5.2 g', 1], ['1.2.3 cups flour', 2], ['12.34.56 tsp sugar', 1],
+    ['1..5 cup', 1], ['1,5 g', 2], ['1/2/3 cup', 2], ['1/0 cup', 2],
+  ]) {
+    const r = scaleLine(line, factor);
+    assert.equal(r.output, line, line);
+    assert.equal(r.scaled, false, line);
+    assert.equal(r.flagged, true, line);
+    assert.equal(r.reason, 'no-quantity', line);
+  }
+  const r = scaleRecipe('1.5.2 g butter\n2 cups milk', { originalServings: 1, targetServings: 2 });
+  assert.equal(r.text, '1.5.2 g butter\n4 cups milk');
+});
+
+test('scaleLine / scaleRecipe reject a bad factor with RangeError', () => {
+  for (const f of [0, -1, NaN, Infinity, -Infinity, '2', undefined]) {
+    assert.throws(() => scaleLine('1 cup sugar', f), RangeError, String(f));
+    assert.throws(() => scaleLine('', f), RangeError, String(f));
+  }
+  assert.throws(() => scaleRecipe('1 cup sugar', { originalServings: 2, targetServings: Infinity }), RangeError);
+  assert.throws(() => scaleRecipe('1 cup sugar', { originalServings: NaN, targetServings: 2 }), RangeError);
+});
+
+test('pinch, dash and smidgen are never scaled', () => {
+  for (const line of ['1 pinch salt', '2 pinches nutmeg', '1 dash hot sauce', '2 dashes bitters', '1 smidgen pepper', '- 1 Pinch of salt']) {
+    for (const factor of [0.01, 3]) {
+      const r = scaleLine(line, factor);
+      assert.equal(r.output, line, line);
+      assert.equal(r.flagged, true, line);
+      assert.equal(r.reason, 'non-scalable', line);
+    }
+  }
+});
+
+test('simple count nouns gain or lose an "s" only when crossing 1', () => {
+  assert.equal(out('1 egg', 2), '2 eggs');
+  assert.equal(out('2 eggs', 0.5), '1 egg');
+  assert.equal(out('1 egg, beaten', 3), '3 eggs, beaten');
+  assert.equal(out('4 cloves', 0.25), '1 clove');
+  assert.equal(out('3 eggs', 0.25), '3/4 egg');
+  // Not crossing 1: left as typed.
+  assert.equal(out('2 eggs', 2), '4 eggs');
+  assert.equal(out('3 eggs', 0.5), '1 1/2 eggs');
+  // Not a lone simple noun, or an unsafe ending: left as typed.
+  assert.equal(out('1 large egg', 2), '2 large egg');
+  assert.equal(out('1 tomato', 2), '2 tomato');
+  assert.equal(out('1 glass', 2), '2 glass');
+  assert.equal(out('2 potatoes', 0.5), '1 potatoes');
+  assert.equal(out('1 Egg', 2), '2 Egg');
+  // Units are never touched by this rule.
+  assert.equal(out('1 cup sugar', 2), '2 cups sugar');
 });

@@ -27,7 +27,8 @@
  *                             scaled; the UI should mark it "not scaled".
  * @property {boolean} blank   True for empty / whitespace-only lines.
  * @property {string|null} reason Why a line was flagged
- *                             ('no-quantity' | 'not-an-ingredient'), else null.
+ *                             ('no-quantity' | 'not-an-ingredient' |
+ *                             'non-scalable'), else null.
  */
 
 const UNICODE_FRACTIONS = {
@@ -46,6 +47,13 @@ const QTY_SRC =
   `|\\d*\\.\\d+` +
   `|\\d+` +
   `|[${UNI}])`;
+
+// A quantity must end cleanly: no trailing digit, slash, ".5", ",5" or "..",
+// so malformed numbers like "1.5.2" or "1,5" never partly match.
+const QTY_END = '(?![\\d/\u2044]|[.,]\\d|\\.\\.)';
+
+/** Count words that are never scaled (the line is kept and flagged). */
+const NON_SCALABLE_RE = /^\s*(?:pinch(?:es)?|dash(?:es)?|smidgens?)(?![a-z])/i;
 
 /**
  * Known units. `kind` is 'volume' (base ml) or 'weight' (base g).
@@ -74,8 +82,8 @@ const UNIT_SRC = Object.entries(UNITS)
 
 const LINE_RE = new RegExp(
   `^(?<prefix>\\s*(?:[-*•]\\s+)?)` +
-  `(?<q1>${QTY_SRC})` +
-  `(?:(?<sep>\\s*(?:-|–|—|\\bto\\b)\\s*)(?<q2>${QTY_SRC}))?` +
+  `(?<q1>${QTY_SRC})${QTY_END}` +
+  `(?:(?<sep>\\s*(?:-|–|—|\\bto\\b)\\s*)(?<q2>${QTY_SRC})${QTY_END})?` +
   `(?:\\s*(?:${UNIT_SRC})(?![a-z])\\.?)?`,
   'iu',
 );
@@ -250,10 +258,13 @@ export function parseLine(line) {
  * Scale (and convert) one line.
  * @param {string} line
  * @param {number} factor Multiplier, e.g. target / original servings.
+ *                        Must be a positive finite number.
  * @param {{ system?: UnitSystem }} [options]
  * @returns {LineResult}
+ * @throws {RangeError} If `factor` is not a positive finite number.
  */
 export function scaleLine(line, factor, { system = 'us' } = {}) {
+  assertFactor(factor);
   const base = { input: line, output: line, scaled: false, flagged: false, blank: false, reason: null };
   if (line.trim() === '') return { ...base, blank: true };
   const p = parseLine(line);
@@ -261,6 +272,10 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
   // "1. Preheat oven", "2) Mix", "350°F": a number, but not an amount.
   if (!p.unit && /^(?:[.)]\s|°|%)/u.test(p.rest)) {
     return { ...base, flagged: true, reason: 'not-an-ingredient' };
+  }
+  // "1 pinch salt", "2 dashes bitters": too small to scale meaningfully.
+  if (!p.unit && NON_SCALABLE_RE.test(p.rest)) {
+    return { ...base, flagged: true, reason: 'non-scalable' };
   }
 
   const scaled = p.quantities.map((q) => q * factor);
@@ -276,6 +291,9 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
   } else {
     texts = scaled.map(formatFraction);
   }
+  const rest = !p.unit && scaled.length === 1
+    ? adjustPlural(p.rest, p.quantities[0], scaled[0])
+    : p.rest;
 
   let qtyText = texts[0];
   if (texts.length === 2) {
@@ -283,7 +301,32 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
     const padded = word || texts.some((t) => /[ /]/.test(t));
     qtyText = word ? `${texts[0]} to ${texts[1]}` : padded ? `${texts[0]} - ${texts[1]}` : `${texts[0]}-${texts[1]}`;
   }
-  return { ...base, output: p.prefix + qtyText + unitText + p.rest, scaled: true };
+  return { ...base, output: p.prefix + qtyText + unitText + rest, scaled: true };
+}
+
+function assertFactor(factor) {
+  if (typeof factor !== 'number' || !Number.isFinite(factor) || factor <= 0) {
+    throw new RangeError('Scale factor must be a positive finite number');
+  }
+}
+
+// Only a lone, simple, lowercase noun ("1 egg", "2 lemons, juiced") is
+// touched, and only when the amount crosses 1. Anything else is left as typed.
+const SIMPLE_NOUN_RE = /^(\s+)([a-z]{3,})(\s*(?:,.*)?)$/u;
+
+function adjustPlural(rest, before, after) {
+  const m = SIMPLE_NOUN_RE.exec(rest);
+  if (!m) return rest;
+  const [, space, word, tail] = m;
+  const wasPlural = friendlyValue(before) > 1;
+  const isPlural = friendlyValue(after) > 1;
+  if (wasPlural === isPlural) return rest;
+  if (isPlural) {
+    if (/(?:s|x|z|ch|sh|y|o)$/.test(word)) return rest;
+    return space + word + 's' + tail;
+  }
+  if (!/[^s]s$/.test(word) || /(?:oes|ches|shes|xes|ies|us|is)$/.test(word)) return rest;
+  return space + word.slice(0, -1) + tail;
 }
 
 /**
