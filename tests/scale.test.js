@@ -379,6 +379,59 @@ test('D-new: sweep — no volume eighths except standalone 1/8 tsp', () => {
   }
 });
 
+
+test('D-new: whole tbsp stay tbsp unless main would show a clean/eighth cup', () => {
+  // Regression: these must NOT become cup + tbsp.
+  assert.equal(out('7 tbsp oil'), '7 tbsp oil');
+  assert.equal(out('15 tbsp oil'), '15 tbsp oil');
+  assert.equal(out('2 cup flour', 0.47), '15 tbsp flour');
+  assert.equal(out('9 tbsp oil'), '9 tbsp oil');
+  assert.equal(out('13 tbsp oil'), '13 tbsp oil');
+  // Main shows eighth-cups for these; D-new rewrites the eighth only.
+  assert.equal(out('6 tbsp oil'), '1/4 cup + 2 tbsp oil');
+  assert.equal(out('10 tbsp oil'), '1/2 cup + 2 tbsp oil');
+  assert.equal(out('14 tbsp oil'), '3/4 cup + 2 tbsp oil');
+  // Main's clean cups stay cups.
+  assert.equal(out('4 tbsp oil'), '1/4 cup oil');
+  assert.equal(out('8 tbsp oil'), '1/2 cup oil');
+  assert.equal(out('12 tbsp oil'), '3/4 cup oil');
+  assert.equal(out('16 tbsp oil'), '1 cup oil');
+  // Fractional tbsp still splits; 10 tsp is fine as tbsp + tsp.
+  assert.equal(out('10 tsp salt'), '3 tbsp + 1 tsp salt');
+});
+
+test('D-new: sweep — whole N tbsp at x1 matches main (eighth-cups rewritten)', () => {
+  // For N=1..15: output is "N tbsp" or a single clean unit main would pick,
+  // or the D-new eighth-cup rewrite (never "1/4 cup + 3 tbsp" style leftovers of 1 or 3).
+  const expected = {
+    1: '1 tbsp', 2: '2 tbsp', 3: '3 tbsp', 4: '1/4 cup', 5: '5 tbsp',
+    6: '1/4 cup + 2 tbsp', 7: '7 tbsp', 8: '1/2 cup', 9: '9 tbsp',
+    10: '1/2 cup + 2 tbsp', 11: '2/3 cup', 12: '3/4 cup', 13: '13 tbsp',
+    14: '3/4 cup + 2 tbsp', 15: '15 tbsp',
+  };
+  for (let n = 1; n <= 15; n++) {
+    assert.equal(out(`${n} tbsp x`), expected[n] + ' x', `${n} tbsp`);
+  }
+});
+
+test('D-new: sweep — x1 identity for inputs main renders without eighths or fractional tbsp', () => {
+  // Unscaled whole-unit inputs that main already shows cleanly must be unchanged.
+  // Only inputs main already renders as themselves (no unit promotion, no eighths).
+  const stable = [
+    '1 tsp', '1/4 tsp', '1/3 tsp', '1/2 tsp', '2/3 tsp', '3/4 tsp', '2 tsp',
+    '1 tbsp', '2 tbsp', '3 tbsp', '5 tbsp', '7 tbsp', '9 tbsp', '13 tbsp', '15 tbsp',
+    '1/4 cup', '1/3 cup', '1/2 cup', '2/3 cup', '3/4 cup', '1 cup', '2 cups',
+    '1 1/2 cups', '1 1/4 cups', '1 1/3 cups',
+  ];
+  for (const line of stable) {
+    assert.equal(out(line), line, line);
+  }
+  // Eighth-cup inputs are intentionally rewritten (not identity).
+  assert.equal(out('3/8 cup'), '1/4 cup + 2 tbsp');
+  assert.equal(out('5/8 cup'), '1/2 cup + 2 tbsp');
+  assert.equal(out('7/8 cup'), '3/4 cup + 2 tbsp');
+});
+
 test('D-new: attack odd scales and ugly outputs', () => {
   for (const f of [0, -1, -0.5, NaN, Infinity, -Infinity]) {
     assert.throws(() => scaleLine('1/3 cup flour', f), RangeError);
