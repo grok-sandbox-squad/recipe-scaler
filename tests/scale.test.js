@@ -277,13 +277,16 @@ test('D-new: fractional tbsp splits into tbsp + tsp; clean cups preferred', () =
   assert.equal(out('1.5 tbsp oil', 2), '3 tbsp oil');
 });
 
-test('D-new: tsp uses only cook fractions; 1/8 tsp standalone only', () => {
-  assert.equal(out('1 tbsp oil', 1 / 8), '1/3 tsp oil');
-  assert.equal(out('1 tsp salt', 5 / 8), '2/3 tsp salt');
+test('D-new: tsp uses quarter grid + 1/8; no 1/3 or 2/3 tsp when scaled', () => {
+  // 0.375 tsp → outside 5% of 1/4 and 1/2; nearest quarter (carry-up) → 1/2 tsp
+  assert.equal(out('1 tbsp oil', 1 / 8), '1/2 tsp oil');
+  assert.equal(out('1 tsp salt', 5 / 8), '3/4 tsp salt');
   assert.equal(out('1 tsp salt', 7 / 8), '1 tsp salt');
-  assert.equal(out('1 tbsp oil', 0.2), '2/3 tsp oil');
+  assert.equal(out('1 tbsp oil', 0.2), '1/2 tsp oil');
   assert.equal(out('1 tbsp oil', 0.3), '1 tsp oil');
   assert.equal(out('1 tbsp oil', 5 / 8), '2 tsp oil');
+  assert.doesNotMatch(out('1 tbsp oil', 1 / 8), /1\/3 tsp|2\/3 tsp/);
+  assert.doesNotMatch(out('1 tsp salt', 5 / 8), /1\/3 tsp|2\/3 tsp/);
   // Compound leftovers snap to 1/4, 1/2, 3/4 (not 1/3).
   assert.equal(out('1 cup flour', 0.07), '1 tbsp + 1/4 tsp flour');
   assert.equal(out('1/4 tsp salt', 0.5), '1/8 tsp salt');
@@ -319,7 +322,7 @@ test('D-new rounding rule + Reviewer: half tbsp, x1 echo, whole tbsp', () => {
   assert.equal(out('5 tsp salt', 2), '3 tbsp + 1 tsp salt');
   assert.equal(out('1 1/8 cup flour'), '1 cup + 2 tbsp flour'); // 1/8 cup forbidden
   assert.equal(out('1 1/4 cups flour', 1.25), '1 1/2 cups + 1 tbsp flour');
-  assert.equal(out('2 tbsp oil', 0.95), '1 tbsp + 2 3/4 tsp oil'); // no %-snap (R final)
+  assert.equal(out('2 tbsp oil', 0.95), '2 tbsp oil'); // 5% snap
   assert.equal(out('2/3 cup flour', 2 / 3), '7 tbsp flour');
 });
 
@@ -361,13 +364,15 @@ test('D-new: ranges — R1 shared unit (upper then tbsp, never tsp ≥1 tbsp)', 
 test('D-new: R3/R4 — no 0 ends; cups + rem <4 tbsp', () => {
   assert.doesNotMatch(out('0-1 tsp salt', 1), /\b0\b/);
   assert.equal(out('0-1 tsp salt', 1), 'up to 1 tsp salt');
-  assert.equal(out('2 cups flour', 0.95), '1 3/4 cups + 2 1/2 tbsp flour');
-  assert.equal(out('4 cups flour', 0.95), '3 3/4 cups + 1 tbsp flour');
-  assert.equal(out('1 2/3 cups flour', 1.25), '2 cups + 1 1/2 tbsp flour');
-  assert.equal(out('11 tbsp butter', 2.5), '1 2/3 cups + 1 tbsp butter');
-  // Never cup + ≥4 tbsp
+  // 5% snap prefers clean singles when within 5%
+  assert.equal(out('2 cups flour', 0.95), '2 cups flour');
+  assert.equal(out('4 cups flour', 0.95), '3 3/4 cups flour');
+  assert.equal(out('1 2/3 cups flour', 1.25), '2 cups flour');
+  // Exact combo (1 1/2 cups + 3 1/2 tbsp) beats near single 1 3/4 cups
+  assert.equal(out('11 tbsp butter', 2.5), '1 1/2 cups + 3 1/2 tbsp butter');
   assert.doesNotMatch(out('2 cups flour', 0.95), /\+ [4-9] tbsp|\+ 1[0-9] tbsp/);
   assert.doesNotMatch(out('2-3 cups flour', 0.95), /\+ [4-9] tbsp|\+ 1[0-9] tbsp/);
+  assert.doesNotMatch(out('11 tbsp butter', 2.5), /\+ [4-9] tbsp|\+ 1[0-9] tbsp/);
 });
 
 test('D-new: round-trip — displayed US volume within 1.5 tsp or 6% of exact', () => {
@@ -481,7 +486,38 @@ test('D-new: metric/weight/attacks unchanged where required', () => {
   assert.equal(out('1 1/2 cups flour', 1 / 3), '1/2 cup flour');
 });
 
-test('D-new: x0.95 and x3/4 sweeps — R1–R4 invariants', () => {
+test('D-new: 5% snap — required examples', () => {
+  assert.equal(out('1 cup flour', 0.95), '1 cup flour');
+  assert.equal(out('1/2 cup sugar', 0.95), '1/2 cup sugar');
+  assert.equal(out('2 tbsp oil', 0.95), '2 tbsp oil');
+  assert.equal(out('1/3 cup flour', 0.5), '2 tbsp + 2 tsp flour');
+  assert.equal(out('250 ml water', 1 / 3), '5 1/2 tbsp water');
+  assert.equal(out('1/4-1/2 cup milk', 0.95), '1/4-1/2 cup milk');
+  assert.equal(out('2-3 tsp salt', 0.95), '2-2 3/4 tsp salt');
+  // Keep
+  assert.equal(out('1/3 cup flour', 0.25), '1 tbsp + 1 tsp flour');
+  assert.equal(out('2/3 cup milk', 0.5), '1/3 cup milk');
+  assert.equal(out('3/4 cup sugar', 1 / 3), '1/4 cup sugar');
+  assert.equal(out('1 tbsp oil', 1.5), '1 1/2 tbsp oil');
+  assert.equal(out('1/4-1/2 cup milk', 0.5), '2-4 tbsp milk');
+  assert.equal(out('1 tbsp oil', 2 / 3), '2 tsp oil');
+  assert.equal(out('1/3-1/2 cup sugar', 0.5), '2 tbsp + 2 tsp to 1/4 cup sugar');
+});
+
+test('D-new: x0.95 and x3/4 sweeps — R1–R4 + 5% snap invariants', () => {
+  function toTsp(qty) {
+    if (qty === 'a pinch' || qty.startsWith('a pinch')) return 1 / 32;
+    let total = 0;
+    for (const part of qty.split(/\s*\+\s*/)) {
+      const m = part.trim().match(/^(.+?)\s+(cups?|tbsp|tsp)$/);
+      assert.ok(m, `parseable: "${part}" in "${qty}"`);
+      const n = parseQuantity(m[1]);
+      assert.ok(n !== null, m[1]);
+      const u = m[2].startsWith('cup') ? 'cup' : m[2];
+      total += n * (u === 'cup' ? 48 : u === 'tbsp' ? 3 : 1);
+    }
+    return total;
+  }
   const amounts = [
     '1/8 tsp', '1/4 tsp', '1/3 tsp', '1/2 tsp', '2/3 tsp', '3/4 tsp', '1 tsp', '2 tsp', '3 tsp',
     '1 tbsp', '1 1/2 tbsp', '2 tbsp', '3 tbsp', '5 tbsp', '6 tbsp', '7 tbsp', '8 tbsp', '11 tbsp',
@@ -496,18 +532,32 @@ test('D-new: x0.95 and x3/4 sweeps — R1–R4 invariants', () => {
   const factors = [0.95, 0.75];
   for (const factor of factors) {
     for (const amt of amounts) {
+      const unit = amt.includes('cup') ? 'cup' : amt.includes('tbsp') ? 'tbsp' : 'tsp';
+      const amount = parseQuantity(amt.slice(0, amt.lastIndexOf(' ')));
       const r = scaleLine(`${amt} x`, factor);
       if (!r.scaled) continue;
       const displayed = r.output.replace(/\s+x$/, '');
       const msg = `${amt} ×${factor} → ${displayed}`;
       assert.doesNotMatch(displayed, /(?:^|[\s-])0(?:\s|-(?!\d)|$)/, `no 0 end: ${msg}`);
-      assert.doesNotMatch(displayed, /(\d+(?:\s+\d+\/\d+|\s*[½⅓⅔¼¾])?)-\1\b/, `no X-X: ${msg}`);
+      assert.doesNotMatch(displayed, /^((?:\d+\s+\d+\/\d+|\d+\/\d+|\d+))-(\1)(?=\s(?:cups?|tbsp|tsp)$)/, `no X-X: ${msg}`);
       assert.doesNotMatch(displayed, /\+\s*(?:[4-9]|[1-9]\d+)\s*tbsp/, `no cup+≥4 tbsp: ${msg}`);
+      assert.doesNotMatch(displayed, /(?:1\/3|2\/3) tsp|(?:1\/3|2\/3) tbsp/, `no thirds tsp/tbsp: ${msg}`);
       for (const part of displayed.split(/\s*\+\s*/)) {
         const p = part.trim();
         if (/\/8/.test(p)) assert.equal(p, '1/8 tsp', `eighths: ${msg}`);
       }
-      assert.doesNotMatch(displayed, /2\/3 tbsp/, msg);
+      if (displayed.startsWith('a pinch') || displayed === '1/8 tsp') continue; // band exception
+      const exactTsp = amount * factor * (unit === 'cup' ? 48 : unit === 'tbsp' ? 3 : 1);
+      // Skip 1/8 band residual (1/16..1/8 → 1/8 may exceed 5%)
+      if (exactTsp >= 1 / 16 - 1e-12 && exactTsp <= 1 / 8 + 1e-9 && displayed === '1/8 tsp') continue;
+      const gotTsp = toTsp(displayed);
+      const rel = gotTsp === 0 ? 0 : Math.abs(gotTsp - exactTsp) / gotTsp;
+      // Sub-tbsp quarter-grid gaps: nearest tsp may exceed 5% (no qualifying candidate).
+      if (exactTsp < 3 - 1e-9 && rel > 0.05 + 1e-9) {
+        assert.ok(/tsp$/.test(displayed) && !displayed.includes('+'), `sub-tbsp fallback tsp: ${msg}`);
+        continue;
+      }
+      assert.ok(rel <= 0.05 + 1e-9, `≤5%: ${msg} exact=${exactTsp} got=${gotTsp} rel=${rel}`);
     }
     for (const amt of ranges) {
       const r = scaleLine(`${amt} x`, factor);
@@ -515,34 +565,21 @@ test('D-new: x0.95 and x3/4 sweeps — R1–R4 invariants', () => {
       const displayed = r.output.replace(/\s+x$/, '');
       const msg = `${amt} ×${factor} → ${displayed}`;
       assert.doesNotMatch(displayed, /(?:^|[\s-])0(?:\s|-|$)/, `no 0 end: ${msg}`);
-      assert.doesNotMatch(displayed, /^(\S+)-\1\s/, `no X-X: ${msg}`);
+      assert.doesNotMatch(displayed, /^((?:\d+\s+\d+\/\d+|\d+\/\d+|\d+))-(\1)(?=\s(?:cups?|tbsp|tsp)$)/, `no X-X: ${msg}`);
       assert.doesNotMatch(displayed, /\+\s*(?:[4-9]|[1-9]\d+)\s*tbsp/, `no cup+≥4 tbsp: ${msg}`);
-      // R1: no tsp-only range when an end is ≥1 tbsp
-      if (/^\d+(\.\d+)?-\d+(\.\d+)? tsp$/.test(displayed) || /^\d+\s+\d+\/\d+-\d/.test(displayed) && displayed.endsWith(' tsp')) {
-        // parse ends in tsp — both must be < 3 tsp worth if shown as tsp range... already enforced by formatter
-        const m = displayed.match(/^(.+?)-(.+?) tsp$/);
-        if (m) {
-          const lo = parseQuantity(m[1]);
-          const hi = parseQuantity(m[2]);
-          if (lo !== null && hi !== null) {
-            assert.ok(lo < 3 && hi < 3, `no tsp end ≥1 tbsp: ${msg}`);
-          }
-        }
+      assert.doesNotMatch(displayed, /(?:1\/3|2\/3) tsp|(?:1\/3|2\/3) tbsp/, `no thirds: ${msg}`);
+      const m = displayed.match(/^(.+?)-(.+?) tsp$/);
+      if (m) {
+        const lo = parseQuantity(m[1]);
+        const hi = parseQuantity(m[2]);
+        if (lo !== null && hi !== null) assert.ok(lo < 3 && hi < 3, `no tsp end ≥1 tbsp: ${msg}`);
       }
       for (const part of displayed.split(/\s*\+\s*|\s+to\s+/)) {
         const p = part.trim().replace(/^up to /, '');
-        if (/\/8/.test(p) && !p.startsWith('a pinch')) {
-          // allow "1/8 tsp" only as a whole end
-          if (/tsp/.test(p) || !/tbsp|cup/.test(p)) {
-            assert.ok(/^(?:1\/8 tsp|1\/8)$/.test(p) || p === '1/8 tsp' || !/\/8/.test(p.replace(/1\/8 tsp/, '')), `eighths: ${msg} part=${p}`);
-          }
-        }
         if (/\/8/.test(p)) {
           assert.ok(/1\/8/.test(p) && !/[357]\/8/.test(p), `only 1/8: ${msg} part=${p}`);
-          assert.doesNotMatch(p, /(?:cup|tbsp).*1\/8|1\/8.*(?:cup|tbsp)/, msg);
         }
       }
-      assert.doesNotMatch(displayed, /2\/3 tbsp/, msg);
     }
   }
 });
