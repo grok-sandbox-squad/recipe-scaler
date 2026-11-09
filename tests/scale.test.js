@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseQuantity, formatFraction, formatMetric, convertAmount,
+  parseQuantity, formatFraction, formatMetric, formatUsVolume, convertAmount,
   scaleLine, scaleRecipe, scaleFactor,
 } from '../src/scale.js';
 
@@ -126,7 +126,7 @@ test('US weight: oz up to 16, then lb; metric input converts to US', () => {
 
 test('ranges, bullets and unit spellings', () => {
   assert.equal(out('2-3 cloves garlic', 2), '4-6 cloves garlic');
-  assert.equal(out('1 to 2 tablespoons honey', 2), '2 to 4 tbsp honey');
+  assert.equal(out('1 to 2 tablespoons honey', 2), '2 tbsp to 1/4 cup honey');
   assert.equal(out('- 2 Tbsp. olive oil', 1), '- 2 tbsp olive oil');
   assert.equal(out('1 teaspoon baking soda', 3), '1 tbsp baking soda');
   assert.equal(out('1 lemon', 1), '1 lemon');
@@ -254,4 +254,90 @@ test('guard: odd inputs never produce NaN or Infinity', () => {
       }
     }
   }
+});
+
+
+test('D-new: fractional tbsp splits into tbsp + tsp; clean cups preferred', () => {
+  // 1/3 cup halved = 1/6 cup = 2 2/3 tbsp → 2 tbsp + 2 tsp
+  assert.equal(out('1/3 cup flour', 0.5), '2 tbsp + 2 tsp flour');
+  // 1/3 cup × 1/4 = 1/12 cup = 1 1/3 tbsp → 1 tbsp + 1 tsp
+  assert.equal(out('1/3 cup flour', 0.25), '1 tbsp + 1 tsp flour');
+  // 2/3 cup halved is exactly 1/3 cup
+  assert.equal(out('2/3 cup milk', 0.5), '1/3 cup milk');
+  // 3/4 cup × 1/3 is exactly 1/4 cup
+  assert.equal(out('3/4 cup sugar', 1 / 3), '1/4 cup sugar');
+  // Whole tbsp and clean cups stay clean; never "16 tbsp" or "0 tbsp + …"
+  assert.equal(out('5 tbsp butter'), '5 tbsp butter');
+  assert.equal(out('8 tbsp butter'), '1/2 cup butter');
+  assert.equal(out('16 tbsp water'), '1 cup water');
+  assert.equal(out('1.5 tbsp oil'), '1 tbsp + 1 1/2 tsp oil');
+  assert.doesNotMatch(out('1/3 cup flour', 0.5), /0 tbsp|\+ 0 tsp|2 2\/3 tbsp|16 tbsp/);
+});
+
+test('D-new: tiny US volumes below 1/8 tsp become "a pinch"', () => {
+  assert.equal(out('1 tsp salt', 0.1), 'a pinch salt');
+  assert.equal(formatUsVolume(0.05, 'tsp'), 'a pinch');
+  // At or above 1/8 tsp still shows as a fraction.
+  assert.equal(out('1/4 tsp salt', 0.5), '1/8 tsp salt');
+  assert.equal(out('1 tsp salt', 0.5), '1/2 tsp salt');
+});
+
+test('D-new: round-trip — displayed US volume within 0.5 tsp or 6% of exact', () => {
+  // Parse a cook-formatted quantity back to teaspoons.
+  // "a pinch" = 1/16 tsp (midpoint of the (0, 1/8) band).
+  function toTsp(qty) {
+    if (qty === 'a pinch') return 1 / 16;
+    let total = 0;
+    for (const part of qty.split(/\s*\+\s*/)) {
+      const m = part.trim().match(/^(.+?)\s+(cups?|tbsp|tsp)$/);
+      assert.ok(m, `parseable: "${part}" in "${qty}"`);
+      const n = parseQuantity(m[1]);
+      assert.ok(n !== null, m[1]);
+      const u = m[2].startsWith('cup') ? 'cup' : m[2];
+      total += n * (u === 'cup' ? 48 : u === 'tbsp' ? 3 : 1);
+    }
+    return total;
+  }
+  const samples = [
+    ['1/3 cup', 0.5], ['1/3 cup', 0.25], ['2/3 cup', 0.5], ['3/4 cup', 1 / 3],
+    ['1 cup', 1 / 6], ['1 cup', 1 / 8], ['1.5 tbsp', 1], ['5 tbsp', 1],
+    ['2 tbsp', 2], ['6 tsp', 1], ['1 tsp', 0.5], ['3/4 tsp', 4],
+    ['1/4 cup', 1 / 3], ['1/2 cup', 1 / 3], ['1 cup', 2 / 3], ['1 tbsp', 2 / 3],
+    ['1 cup', 1 / 7], ['2/3 cup', 1 / 4], ['1/3 cup', 2 / 3], ['3 tbsp', 1.5],
+  ];
+  for (const [qty, factor] of samples) {
+    const unit = qty.includes('cup') ? 'cup' : qty.includes('tbsp') ? 'tbsp' : 'tsp';
+    const amount = parseQuantity(qty.slice(0, qty.lastIndexOf(' ')));
+    const exactTsp = amount * factor * (unit === 'cup' ? 48 : unit === 'tbsp' ? 3 : 1);
+    const displayed = scaleLine(`${qty} x`, factor).output.replace(/\s+x$/, '');
+    const gotTsp = toTsp(displayed);
+    const absErr = Math.abs(gotTsp - exactTsp);
+    const relErr = exactTsp === 0 ? 0 : absErr / exactTsp;
+    assert.ok(
+      absErr <= 0.5 || relErr <= 0.06,
+      `${qty} ×${factor}: exact ${exactTsp} tsp, displayed "${displayed}" = ${gotTsp} tsp (abs ${absErr}, rel ${relErr})`,
+    );
+  }
+});
+
+test('D-new: attack odd scales and ugly outputs', () => {
+  for (const f of [0, -1, -0.5, NaN, Infinity, -Infinity]) {
+    assert.throws(() => scaleLine('1/3 cup flour', f), RangeError);
+  }
+  for (const factor of [1 / 7, 0.001, 1e6, 1 / 48, 1 / 96, 2 / 3, 5 / 6]) {
+    const r = scaleLine('1/3 cup flour', factor);
+    assert.equal(r.scaled, true, String(factor));
+    assert.doesNotMatch(
+      r.output,
+      /NaN|Infinity|2 2\/3 tbsp|1 1\/3 tbsp|0 tbsp \+| \+ 0 tsp|5\/6 tbsp|5\/8 tbsp/,
+    );
+  }
+  assert.doesNotMatch(out('1 cup water', 1e6), /NaN|Infinity/);
+  assert.equal(out('1 cup water', 1 / 500), 'a pinch water');
+  assert.equal(out('1 1/2 cups flour', 1 / 3), '1/2 cup flour');
+  assert.match(out('1-2 tbsp oil', 2), /tbsp|cup/);
+  assert.match(out('1 to 2 tsp salt', 3), /tbsp|tsp/);
+  assert.equal(out('1 cup milk', 1, 'metric'), '237 ml milk');
+  assert.equal(out('8 oz cheese', 2), '1 lb cheese');
+  assert.equal(out('⅓ cup flour', 0.5), '2 tbsp + 2 tsp flour');
 });

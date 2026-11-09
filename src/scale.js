@@ -10,7 +10,7 @@
  *
  * Helpers (also exported for tests / UI):
  *   parseQuantity, parseLine, formatFraction, formatMetric,
- *   convertAmount, scaleFactor
+ *   formatUsVolume, convertAmount, scaleFactor
  *
  * @module scale
  */
@@ -238,6 +238,77 @@ function unitLabel(unit, value) {
 }
 
 /**
+ * Format a US volume the way a cook writes it (D-new).
+ *
+ * Rules:
+ * - Prefer a clean cup fraction when one exists (handled upstream by pickUnit,
+ *   and re-checked here when a tbsp amount lands on a clean cup).
+ * - Never show a fractional tablespoon. Split into whole tbsp + tsp using
+ *   1 tbsp = 3 tsp (e.g. 2 2/3 tbsp → "2 tbsp + 2 tsp").
+ * - Never show "0 tbsp + …", "+ 0 tsp", "3 tbsp + 3 tsp", or "16 tbsp".
+ * - Leftover tsp uses the same friendly fractions as elsewhere (eighths and
+ *   thirds). No "~" marker: approximation is the existing silent rounding.
+ * - Amounts below 1/8 tsp display as "a pinch".
+ *
+ * Returns the full quantity+unit string (units included), so the caller
+ * should not append another unit label.
+ *
+ * @param {number} value Amount in `unit`.
+ * @param {'cup'|'tbsp'|'tsp'} unit
+ * @returns {string}
+ */
+export function formatUsVolume(value, unit) {
+  if (!Number.isFinite(value) || value < 0) return `${value} ${unit}`;
+  if (unit === 'cup') return `${formatFraction(value)} ${unitLabel('cup', value)}`;
+  if (unit === 'tsp') {
+    if (value > 0 && value < 1 / 8) return 'a pinch';
+    return `${formatFraction(value)} tsp`;
+  }
+  if (unit === 'tbsp') return formatTbspCook(value);
+  return `${formatFraction(value)} ${unit}`;
+}
+
+/** @param {number} tbsp */
+function formatTbspCook(tbsp) {
+  // Prefer a clean cup when this many tablespoons is one.
+  const asCup = formatIfCleanCup(tbsp / 16);
+  if (asCup) return asCup;
+
+  const whole = Math.floor(tbsp + 1e-9);
+  const frac = tbsp - whole;
+  if (frac < 1e-9) return `${whole} tbsp`;
+
+  // Fractional tablespoon → whole tbsp + tsp (1 tbsp = 3 tsp).
+  const tspRaw = frac * 3;
+  let tspFriendly = friendlyValue(tspRaw);
+  let w = whole;
+  if (tspFriendly >= 3 - 1e-9) {
+    w += 1;
+    tspFriendly = 0;
+    const carried = formatIfCleanCup(w / 16);
+    if (carried) return carried;
+    return w === 0 ? 'a pinch' : `${w} tbsp`;
+  }
+  if (tspFriendly < 1e-9) {
+    return w === 0 ? 'a pinch' : `${w} tbsp`;
+  }
+  if (tspRaw < 1 / 8) {
+    return w === 0 ? 'a pinch' : `${w} tbsp`;
+  }
+  const tspText = `${formatFraction(tspRaw)} tsp`;
+  if (w === 0) return tspText;
+  return `${w} tbsp + ${tspText}`;
+}
+
+/** @param {number} cups @returns {string|null} */
+function formatIfCleanCup(cups) {
+  if (cups >= (1 / 4) * (1 - UNIT_TOLERANCE) && relError(cups) <= UNIT_TOLERANCE) {
+    return `${formatFraction(cups)} ${unitLabel('cup', cups)}`;
+  }
+  return null;
+}
+
+/**
  * Parse one line into its parts, without scaling.
  * @param {string} line
  * @returns {null | {
@@ -300,8 +371,16 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
     const first = convertAmount(scaled[0], p.unit, sys);
     const ratio = UNITS[p.unit].base / UNITS[first.unit].base;
     const values = scaled.map((v) => v * ratio);
-    texts = values.map((v) => formatValue(v, first.unit));
-    unitText = ' ' + unitLabel(first.unit, values[values.length - 1]);
+    // US cup/tbsp/tsp: cook-friendly formatting includes the unit (and may
+    // split fractional tbsp into "N tbsp + M tsp"), so do not append another.
+    const cookVolume = sys === 'us' && (first.unit === 'cup' || first.unit === 'tbsp' || first.unit === 'tsp');
+    if (cookVolume) {
+      texts = values.map((v) => formatUsVolume(v, first.unit));
+      unitText = '';
+    } else {
+      texts = values.map((v) => formatValue(v, first.unit));
+      unitText = ' ' + unitLabel(first.unit, values[values.length - 1]);
+    }
   } else {
     texts = scaled.map(formatFraction);
   }
