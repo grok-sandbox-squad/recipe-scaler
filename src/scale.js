@@ -664,18 +664,30 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
   }
 
   // x1 echo for US cook volumes (cup/tbsp/tsp) only: keep the typed
-  // amount+unit unless it is an eighth-cup (1/8, 3/8, 5/8, 7/8 cup), which
-  // still rewrites per ruling (d). Eighth tsp/tbsp ARE echoed at ×1.
-  // Counts/weights/metric still process.
+  // amount+unit unless it is an eighth-cup, which still rewrites. Mixed
+  // eighth-cups (whole ≥ 1) convert exactly (cup + 2 tbsp); plain eighth-cups
+  // under 1 keep the tbsp rewrite. Ranges that include a mixed eighth-cup
+  // echo as typed. Unicode glued forms (1⅞) match ASCII.
+  // Eighth tsp/tbsp ARE echoed at ×1. Counts/weights/metric still process.
   const cookUnit = p.unit === 'cup' || p.unit === 'tbsp' || p.unit === 'tsp';
-  if (
-    Math.abs(factor - 1) < 1e-15
-    && system !== 'metric'
-    && cookUnit
-    && !hasForbiddenEighth(p)
-  ) {
+  const x1 = Math.abs(factor - 1) < 1e-15 && system !== 'metric';
+  if (x1 && cookUnit && !hasForbiddenEighth(p)) {
     // Includes ranges with a 0 lower end (echo "0-1 tsp" unchanged at ×1).
     return { ...base, output: line, scaled: true };
+  }
+  // ×1 ranges with a mixed eighth-cup end: echo exactly as typed.
+  if (x1 && p.unit === 'cup' && p.quantities.length === 2 && hasMixedEighthCup(p)) {
+    return { ...base, output: line, scaled: true };
+  }
+  // ×1 eighth-cup singles: exact mixed (≥1) rewrite; under-1 → tbsp path.
+  if (x1 && p.unit === 'cup' && hasForbiddenEighth(p) && p.quantities.length === 1) {
+    const q = p.quantities[0];
+    const text = q >= 1 - 1e-12
+      ? formatExactMixedEighthCup(q)
+      : formatUsVolume(q, 'cup');
+    const output = fixPinchOf(p.prefix + text + p.rest);
+    if (/NaN|Infinity/.test(text)) return { ...base, flagged: true, reason: 'no-quantity' };
+    return { ...base, output, scaled: true };
   }
 
   const scaled = p.quantities.map((q) => q * factor);
@@ -775,14 +787,51 @@ function normalizeRangeEnd(s) {
 }
 
 /**
+ * Exact ×1 rewrite for mixed eighth-cups (whole ≥ 1 plus 1/8, 3/8, 5/8, 7/8).
+ * Always: floor to a cook quarter-cup, remainder 1/8 cup = 2 tbsp.
+ * Plain eighth-cups under 1 stay on formatUsVolume (e.g. 5/8 → 10 tbsp).
+ * @param {number} cups
+ * @returns {string}
+ */
+function formatExactMixedEighthCup(cups) {
+  const eighths = Math.round(cups * 8);
+  const cupAmt = (eighths - 1) / 8;
+  const cupText = formatCookFracExact(cupAmt);
+  const u = cupAmt > 1 ? 'cups' : 'cup';
+  return `${cupText} ${u} + 2 tbsp`;
+}
+
+/**
+ * True when a raw cup qty is a *mixed* eighth (whole ≥ 1 plus 1/8, 3/8, 5/8, 7/8),
+ * ASCII ("1 7/8") or Unicode glued/spaced ("1⅞", "1 ⅞").
+ * @param {string} raw
+ * @returns {boolean}
+ */
+function isMixedEighthRaw(raw) {
+  const s = raw.trim();
+  let m;
+  if ((m = s.match(/^(\d+)\s+[1357]\/8$/u))) return Number(m[1]) >= 1;
+  if ((m = s.match(/^(\d+)\s*(?:⅛|⅜|⅝|⅞)$/u))) return Number(m[1]) >= 1;
+  return false;
+}
+
+/** True when any end of a cup parse is a mixed eighth-cup. */
+function hasMixedEighthCup(p) {
+  if (p.unit !== 'cup') return false;
+  return p.rawQuantities.some(isMixedEighthRaw);
+}
+
+/**
  * True when a raw qty uses an eighth of a *cup* (1/8, 3/8, 5/8, 7/8).
  * Eighth tsp/tbsp are echoed at ×1 (Supreme Leader); only eighth-cups rewrite.
  */
 function hasForbiddenEighth(p) {
   if (p.unit !== 'cup') return false;
-  const eighthCups = /(?:^|\s)(?:[1357]\/8|⅛|⅜|⅝|⅞)(?:\s|$)/u;
+  // ASCII "7/8" / "1 7/8"; unicode "⅞" / "1 ⅞" / glued "1⅞".
   for (const raw of p.rawQuantities) {
-    if (eighthCups.test(raw)) return true;
+    const s = raw.trim();
+    if (/^(?:\d+\s+)?[1357]\/8$/u.test(s)) return true;
+    if (/^(?:\d+\s*)?(?:⅛|⅜|⅝|⅞)$/u.test(s)) return true;
   }
   return false;
 }

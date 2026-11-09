@@ -936,3 +936,168 @@ test('D-new: x1 eighths self-attack — empty/zero/neg/huge/malformed/odd spacin
   assert.match(out('999 5/8 cup flour'), /tbsp|cup/);
 });
 
+test('D-new: x1 mixed eighth-cups convert exactly (ASCII + unicode glued); plain under-1 unchanged', () => {
+  // Whole parts 1..4 inclusive (16 ASCII + 16 unicode-no-space).
+  assert.equal(out('1 1/8 cups'), '1 cup + 2 tbsp');
+  assert.equal(out('1⅛ cups'), '1 cup + 2 tbsp');
+  assert.equal(out('1 1/8 cup'), '1 cup + 2 tbsp');
+  assert.equal(out('1⅛ cup'), '1 cup + 2 tbsp');
+  assert.equal(out('1 3/8 cups'), '1 1/4 cups + 2 tbsp');
+  assert.equal(out('1⅜ cups'), '1 1/4 cups + 2 tbsp');
+  assert.equal(out('1 3/8 cup'), '1 1/4 cups + 2 tbsp');
+  assert.equal(out('1⅜ cup'), '1 1/4 cups + 2 tbsp');
+  assert.equal(out('1 5/8 cups'), '1 1/2 cups + 2 tbsp');
+  assert.equal(out('1⅝ cups'), '1 1/2 cups + 2 tbsp');
+  assert.equal(out('1 5/8 cup'), '1 1/2 cups + 2 tbsp');
+  assert.equal(out('1⅝ cup'), '1 1/2 cups + 2 tbsp');
+  assert.equal(out('1 7/8 cups'), '1 3/4 cups + 2 tbsp');
+  assert.equal(out('1⅞ cups'), '1 3/4 cups + 2 tbsp');
+  assert.equal(out('1 7/8 cup'), '1 3/4 cups + 2 tbsp');
+  assert.equal(out('1⅞ cup'), '1 3/4 cups + 2 tbsp');
+  assert.equal(out('2 1/8 cups'), '2 cups + 2 tbsp');
+  assert.equal(out('2⅛ cups'), '2 cups + 2 tbsp');
+  assert.equal(out('2 1/8 cup'), '2 cups + 2 tbsp');
+  assert.equal(out('2⅛ cup'), '2 cups + 2 tbsp');
+  assert.equal(out('2 3/8 cups'), '2 1/4 cups + 2 tbsp');
+  assert.equal(out('2⅜ cups'), '2 1/4 cups + 2 tbsp');
+  assert.equal(out('2 3/8 cup'), '2 1/4 cups + 2 tbsp');
+  assert.equal(out('2⅜ cup'), '2 1/4 cups + 2 tbsp');
+  assert.equal(out('2 5/8 cups'), '2 1/2 cups + 2 tbsp');
+  assert.equal(out('2⅝ cups'), '2 1/2 cups + 2 tbsp');
+  assert.equal(out('2 5/8 cup'), '2 1/2 cups + 2 tbsp');
+  assert.equal(out('2⅝ cup'), '2 1/2 cups + 2 tbsp');
+  assert.equal(out('2 7/8 cups'), '2 3/4 cups + 2 tbsp');
+  assert.equal(out('2⅞ cups'), '2 3/4 cups + 2 tbsp');
+  assert.equal(out('2 7/8 cup'), '2 3/4 cups + 2 tbsp');
+  assert.equal(out('2⅞ cup'), '2 3/4 cups + 2 tbsp');
+  assert.equal(out('3 1/8 cups'), '3 cups + 2 tbsp');
+  assert.equal(out('3⅛ cups'), '3 cups + 2 tbsp');
+  assert.equal(out('3 1/8 cup'), '3 cups + 2 tbsp');
+  assert.equal(out('3⅛ cup'), '3 cups + 2 tbsp');
+  assert.equal(out('3 3/8 cups'), '3 1/4 cups + 2 tbsp');
+  assert.equal(out('3⅜ cups'), '3 1/4 cups + 2 tbsp');
+  assert.equal(out('3 3/8 cup'), '3 1/4 cups + 2 tbsp');
+  assert.equal(out('3⅜ cup'), '3 1/4 cups + 2 tbsp');
+  assert.equal(out('3 5/8 cups'), '3 1/2 cups + 2 tbsp');
+  assert.equal(out('3⅝ cups'), '3 1/2 cups + 2 tbsp');
+  assert.equal(out('3 5/8 cup'), '3 1/2 cups + 2 tbsp');
+  assert.equal(out('3⅝ cup'), '3 1/2 cups + 2 tbsp');
+  assert.equal(out('3 7/8 cups'), '3 3/4 cups + 2 tbsp');
+  assert.equal(out('3⅞ cups'), '3 3/4 cups + 2 tbsp');
+  assert.equal(out('3 7/8 cup'), '3 3/4 cups + 2 tbsp');
+  assert.equal(out('3⅞ cup'), '3 3/4 cups + 2 tbsp');
+  assert.equal(out('4 1/8 cups'), '4 cups + 2 tbsp');
+  assert.equal(out('4⅛ cups'), '4 cups + 2 tbsp');
+  assert.equal(out('4 1/8 cup'), '4 cups + 2 tbsp');
+  assert.equal(out('4⅛ cup'), '4 cups + 2 tbsp');
+  assert.equal(out('4 3/8 cups'), '4 1/4 cups + 2 tbsp');
+  assert.equal(out('4⅜ cups'), '4 1/4 cups + 2 tbsp');
+  assert.equal(out('4 3/8 cup'), '4 1/4 cups + 2 tbsp');
+  assert.equal(out('4⅜ cup'), '4 1/4 cups + 2 tbsp');
+  assert.equal(out('4 5/8 cups'), '4 1/2 cups + 2 tbsp');
+  assert.equal(out('4⅝ cups'), '4 1/2 cups + 2 tbsp');
+  assert.equal(out('4 5/8 cup'), '4 1/2 cups + 2 tbsp');
+  assert.equal(out('4⅝ cup'), '4 1/2 cups + 2 tbsp');
+  assert.equal(out('4 7/8 cups'), '4 3/4 cups + 2 tbsp');
+  assert.equal(out('4⅞ cups'), '4 3/4 cups + 2 tbsp');
+  assert.equal(out('4 7/8 cup'), '4 3/4 cups + 2 tbsp');
+  assert.equal(out('4⅞ cup'), '4 3/4 cups + 2 tbsp');
+  // Plain eighth-cups under 1 cup — unchanged from main.
+  assert.equal(out('1/8 cup'), '2 tbsp');
+  assert.equal(out('3/8 cup'), '6 tbsp');
+  assert.equal(out('5/8 cup'), '10 tbsp');
+  assert.equal(out('7/8 cup'), '14 tbsp');
+  assert.equal(out('⅝ cup sugar'), '10 tbsp sugar');
+  // Other unicode (non-eighth) still echoes at ×1, glyph preserved.
+  assert.equal(out('1½ cup'), '1½ cup');
+  assert.equal(out('1 ½ cup'), '1 ½ cup');
+  assert.equal(out('½ cup'), '½ cup');
+  assert.equal(out('1⅓ cup'), '1⅓ cup');
+  assert.equal(out('1¼ cup'), '1¼ cup');
+});
+
+test('D-new: x1 mixed eighth-cups self-attack', () => {
+  assert.equal(out('1⅞cup'), '1 3/4 cups + 2 tbsp');
+  assert.equal(out('1 ⅞ cup'), '1 3/4 cups + 2 tbsp');
+  assert.equal(out('1⅛-1⅞ cups'), '1⅛-1⅞ cups');
+  assert.equal(out('1 1/8-1 7/8 cups'), '1 1/8-1 7/8 cups');
+  assert.equal(out(''), '');
+  assert.equal(scaleLine('0 cup', 1).reason, 'zero-quantity');
+  assert.equal(out('0 1/8 cup'), '2 tbsp'); // parses as 1/8, not zero
+  assert.equal(scaleLine('-1 1/8 cup', 1).flagged, true);
+  assert.equal(scaleLine('-1 1/8 cup', 1).reason, 'no-quantity');
+  assert.equal(scaleLine('1⅞⅞ cup', 1).flagged, true);
+  assert.equal(out('99 7/8 cups flour'), '99 3/4 cups + 2 tbsp flour');
+});
+
+test('D-new: x1 ranges with mixed eighth-cup echo as typed; plain under-1 ranges rewrite', () => {
+  // Confirmed ruling: any cup range with ≥1 mixed eighth-cup end echoes as typed
+  // (ASCII, spaced Unicode, glued Unicode; seps -, " - ", en-dash, " to "; cup/cups).
+  // Includes plain-under-1 + mixed, e.g. 7/8-1 1/8 cups.
+  const mustEcho = [
+    '1 1/8-1 7/8 cups',
+    '1-1 1/8 cups',
+    '1 1/8-2 cups',
+    '1⅛-1⅞ cups',
+    '1 ⅛-2 cups',
+    '1 1/8 to 1 7/8 cups',
+    '1 to 1 1/8 cups',
+    '1/4-1⅛ cup demo flour',
+    '1/4 - 1⅛ cups demo flour',
+    '1/4–1⅛ cup demo flour',
+    '1/4 to 1⅞ cups demo flour',
+    '7/8-1 1/8 cups',
+    '⅞-1⅛ cups',
+    '1/8-1 1/8 cups',
+    '2-2 7/8 cups',
+    '2 to 2 7/8 cups',
+    '1 3/8-1 5/8 cups',
+  ];
+  for (const line of mustEcho) {
+    assert.equal(out(line), line);
+  }
+  // Plain eighth-cups under 1 — still rewrite like main
+  assert.equal(out('1/8-3/8 cup'), '2-6 tbsp');
+  assert.equal(out('1/8-7/8 cup'), '2-14 tbsp');
+  assert.equal(out('3/8-5/8 cup'), '6-10 tbsp');
+  assert.equal(out('1/8-1/4 cup'), '2-4 tbsp');
+  // Singles still convert exactly
+  assert.equal(out('1 3/8 cups'), '1 1/4 cups + 2 tbsp');
+  assert.equal(out('1⅞ cup'), '1 3/4 cups + 2 tbsp');
+});
+
+test('D-new: x1 mixed-eighth cup-range sweep (e8cup ends × seps) all echo', () => {
+  const uf = { '1/8': '⅛', '3/8': '⅜', '5/8': '⅝', '7/8': '⅞' };
+  const ends = [
+    '1/8', '3/8', '5/8', '7/8', '1/4', '1/2', '1', '2',
+    '1 1/8', '1 3/8', '1 5/8', '1 7/8', '2 1/8', '2 7/8',
+    '1⅛', '1⅞', '2⅜', '1 ⅛', '1 ⅞', '⅛', '⅞', '1 1/2', '1½', '1¼',
+  ];
+  const mixedE = (s) => /(\d\s*[⅛⅜⅝⅞])|(\d\s+[1357]\/8)/.test(s);
+  const val = (s) => {
+    const rev = Object.fromEntries(Object.entries(uf).map(([k, v]) => [v, k]));
+    s = s.replace(/[⅛⅜⅝⅞¼½¾⅓⅔]/gu, (m) => ' ' + (rev[m] || m)).trim();
+    let t = 0;
+    for (const p of s.split(/\s+/)) {
+      const m = p.match(/^(\d+)\/(\d+)$/);
+      t += m ? Number(m[1]) / Number(m[2]) : Number(p);
+    }
+    return t;
+  };
+  let n = 0;
+  for (const x of ends) {
+    for (const y of ends) {
+      if (val(x) >= val(y)) continue;
+      for (const sep of ['-', ' - ', '–', ' to ']) {
+        for (const u of ['cup', 'cups']) {
+          const line = `${x}${sep}${y} ${u} demo flour`;
+          if (!mixedE(line.split(' demo')[0])) continue;
+          assert.equal(scaleLine(line, 1).output, line, line);
+          n++;
+        }
+      }
+    }
+  }
+  assert.ok(n >= 1500, `expected ≥1500 mixed-eighth ranges, got ${n}`);
+});
+
