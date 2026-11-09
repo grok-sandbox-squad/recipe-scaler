@@ -1,6 +1,6 @@
 # Recipe Scaler
 
-Paste an ingredient list, set the original and target servings, and see every amount rescaled as you type. Amounts are shown as friendly kitchen fractions (`1 1/2 cups`, not `1.5 cups`), units are switched to whatever reads better (48 tsp becomes 1 cup), and you can show the result in US or metric units. US volumes follow a cook rounding rule: exact clean cups first, else whole tbsp below 1 cup (half-tbsp allowed), else a split. At ×1, typed cup/tbsp/tsp amounts are echoed unchanged (except forbidden eighth-cups). Ranges try a shared unit (cup→tbsp→tsp) when both ends are clean. Below 1/16 tsp → `a pinch of …`; 1/16–1/8 tsp → `1/8 tsp`.
+Paste an ingredient list, set the original and target servings, and see every amount rescaled as you type. Amounts are shown as friendly kitchen fractions (`1 1/2 cups`, not `1.5 cups`), units are switched to whatever reads better (48 tsp becomes 1 cup), and you can show the result in US or metric units. US volumes follow a cook rounding rule: exact clean cups first, else whole tbsp below 1 cup (half-tbsp allowed), else a split. At ×1, typed cup/tbsp/tsp amounts are echoed unchanged (except forbidden eighth-cups). Ranges try the input unit first, then tbsp (never tsp when an end is ≥1 tbsp); otherwise each end formats on its own joined with ` to `. Equal ends collapse; a lower bound of 0 becomes `up to X`. At ≥1 cup the remainder is whole/half tbsp under 4 (never `cup + 4 or more tbsp`). Below 1/16 tsp → `a pinch of …`; 1/16–1/8 tsp → `1/8 tsp`.
 
 **Live site:** https://grok-sandbox-squad.github.io/recipe-scaler/
 
@@ -59,7 +59,7 @@ The same command runs in GitHub Actions on every pull request (`tests` workflow,
 - Plurals are only adjusted for a simple one-word noun right after a count: singular at 1 or less (`1/2 egg`), plural above 1 (`2 eggs`), capitals kept (`2 Eggs`). Multi-word nouns are not changed (`2 green onions` halved shows `1 green onions`).
 - Thousands separators are not read: `1,000 g` and `1 000 g` are shown unchanged and marked "not scaled". Write `1000 g` instead.
 - Zero amounts (`0 cups sugar`) are left unchanged and marked "not scaled".
-- Counts still round to friendly fractions (eighths and thirds). US volumes: exact clean cups (1/4–3/4) win; otherwise whole tbsp below 1 cup; otherwise cups+tbsp or tbsp+tsp. Standalone `1/8 tsp` is allowed; below that, `a pinch`.
+- Counts still round to friendly fractions (eighths and thirds). US volumes: exact clean cups (1/4–3/4) win; otherwise whole tbsp (or N 1/2 tbsp) below 1 cup; at ≥1 cup use largest clean cup + whole/half tbsp under 4; otherwise tbsp+tsp. Standalone `1/8 tsp` is allowed; below 1/16 tsp, `a pinch`.
 - Metric conversion is by volume or weight only; it never converts between the two (no cups of flour to grams).
 - Oven temperatures and numbered steps are left unchanged and marked "not scaled".
 - Pinch, dash and smidgen are never scaled.
