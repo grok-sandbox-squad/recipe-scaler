@@ -332,7 +332,8 @@ function unitLabel(unit, value) {
  * Simplicity: single-unit < two-part combo; among singles, cup > tbsp > tsp;
  * then nearest (absolute tsp error); on an equal-distance tie, round DOWN
  * (prefer the smaller candidate — over-seasoning is worse).
- * Never tsp-only for ≥1 tbsp. Standalone 1/3 and 2/3 tsp allowed; never 1/3 or 2/3 tbsp.
+ * Never tsp-only for ≥1 tbsp. Standalone 1/3, 2/3 and whole+1/3|+2/3 tsp allowed;
+ * never 1/3 or 2/3 tbsp, and no thirds in tbsp+tsp combos.
  * Below 1/16 tsp → pinch; 1/16..1/8 → 1/8 tsp (explicit exception, may exceed 5%).
  *
  * @param {number} value Amount in `unit`.
@@ -466,11 +467,17 @@ function buildSnapCandidates(trueTsp) {
     return cands;
   }
 
-  // --- single tsp (only when amount < 1 tbsp): 1/8, quarters, and standalone 1/3 & 2/3 ---
+  // --- single tsp (only when amount < 1 tbsp): 1/8, quarters, 1/3 & 2/3,
+  //     and whole+1/3 or whole+2/3 (1 1/3, 1 2/3, 2 1/3, 2 2/3). Thirds stay
+  //     out of tbsp+tsp combos.
   if (trueTsp < 3 - 1e-9) {
     add(1 / 8, '1/8 tsp', 1, 2);
     add(1 / 3, '1/3 tsp', 1, 2);
     add(2 / 3, '2/3 tsp', 1, 2);
+    for (const w of [1, 2]) {
+      add(w + 1 / 3, `${w} 1/3 tsp`, 1, 2);
+      add(w + 2 / 3, `${w} 2/3 tsp`, 1, 2);
+    }
     for (let q = 1; q <= 11; q++) {
       const v = q * 0.25; // 0.25 .. 2.75
       if (v >= 3 - 1e-9) break;
@@ -868,6 +875,9 @@ function bestGridInUnit(trueTsp, unit, tol) {
     for (let t = step; t <= 40 + 1e-9; t += step) vals.push(t);
   } else {
     vals.push(1 / 8, 1 / 3, 2 / 3);
+    for (const w of [1, 2]) {
+      vals.push(w + 1 / 3, w + 2 / 3);
+    }
     for (let q = 1; q <= 11; q++) vals.push(q * 0.25);
   }
   let best = null;
@@ -905,11 +915,16 @@ function isCleanRangeEnd(value, unit) {
     if (ALLOW_HALF_TBSP && Math.abs(frac - 0.5) < 1e-6) return true;
     return false;
   }
-  // tsp: 1/8, quarters, or standalone 1/3 / 2/3
+  // tsp: 1/8, quarters, 1/3 / 2/3, or whole+1/3 / whole+2/3 under 3
   if (Math.abs(value - 1 / 8) < 1e-6) return true;
-  if (Math.abs(value - 1 / 3) < 1e-6 || Math.abs(value - 2 / 3) < 1e-6) return true;
+  const whole = Math.floor(value + 1e-9);
+  const frac = value - whole;
+  if (Math.abs(frac - 1 / 3) < 1e-6 || Math.abs(frac - 2 / 3) < 1e-6) {
+    return value < 3 - 1e-9;
+  }
+  if (Math.abs(frac) < 1e-6 && value > 0 && value < 3 - 1e-9) return true;
   const q = Math.round(value * 4) / 4;
-  return Math.abs(q - value) < 1e-6 && q > 0;
+  return Math.abs(q - value) < 1e-6 && q > 0 && q < 3 - 1e-9;
 }
 
 function formatCleanRangeQty(value, unit) {
@@ -924,8 +939,10 @@ function formatCleanRangeQty(value, unit) {
   }
   if (Math.abs(value - 1 / 8) < 1e-6) return '1/8';
   if (value >= PINCH_CUTOFF_TSP && value < 1 / 8) return '1/8';
-  if (Math.abs(value - 1 / 3) < 1e-6) return '1/3';
-  if (Math.abs(value - 2 / 3) < 1e-6) return '2/3';
+  const whole = Math.floor(value + 1e-9);
+  const frac = value - whole;
+  if (Math.abs(frac - 1 / 3) < 1e-6) return whole === 0 ? '1/3' : `${whole} 1/3`;
+  if (Math.abs(frac - 2 / 3) < 1e-6) return whole === 0 ? '2/3' : `${whole} 2/3`;
   const q = Math.round(value * 4) / 4;
   if (q <= 0) return '1/8';
   return formatQuarterTsp(q);

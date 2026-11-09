@@ -282,6 +282,13 @@ test('D-new: tsp grid — quarters, 1/8, standalone 1/3 & 2/3; ties round DOWN',
   assert.equal(out('1 tsp salt', 1 / 3), '1/3 tsp salt');
   assert.equal(out('2 tsp salt', 1 / 3), '2/3 tsp salt');
   assert.equal(out('1/2-1 tsp', 2 / 3), '1/3-2/3 tsp');
+  // Mixed-number thirds as single tsp under 1 tbsp
+  assert.equal(out('4 tsp salt', 1 / 3), '1 1/3 tsp salt');
+  assert.equal(out('2/3 tsp', 2), '1 1/3 tsp');
+  assert.equal(out('2 tsp', 2 / 3), '1 1/3 tsp');
+  assert.equal(out('1 tsp', 4 / 3), '1 1/3 tsp');
+  assert.equal(out('2/3 tsp', 2.5), '1 2/3 tsp');
+  assert.equal(out('4 tsp', 2 / 3), '2 2/3 tsp');
   // 0.375 tsp: 1/3 is nearer than 1/4 (report: was 1/4 under no-thirds rule)
   assert.equal(out('1 tbsp oil', 1 / 8), '1/3 tsp oil');
   // 0.625: 2/3 nearer than 1/2
@@ -685,3 +692,17 @@ test('D-new: ranges never split units when a shared unit fits within 5%', () => 
   }
 });
 
+test('D-new: no combo contains 1/3 or 2/3 tsp leftover', () => {
+  const amounts = [
+    '1 tsp', '2 tsp', '3 tsp', '4 tsp', '5 tsp', '1 tbsp', '1.5 tbsp', '2 tbsp', '3 tbsp',
+    '5 tbsp', '7 tbsp', '11 tbsp', '1/4 cup', '1/3 cup', '1/2 cup', '2/3 cup', '1 cup', '1 1/4 cups', '2 cups',
+  ];
+  const factors = [0.07, 0.1, 0.2, 0.25, 1/3, 0.4, 0.5, 5/8, 2/3, 0.75, 0.95, 1.25, 1.5, 2, 2.5, 3, 3.55];
+  for (const amt of amounts) {
+    for (const f of factors) {
+      const o = out(amt, f);
+      if (!o.includes('+')) continue;
+      assert.doesNotMatch(o, /\+\s*(?:\d+\s+)?(?:1\/3|2\/3)\s*tsp/, `no thirds in combo: ${amt} x${f} -> ${o}`);
+    }
+  }
+});
