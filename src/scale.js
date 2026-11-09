@@ -332,8 +332,9 @@ function unitLabel(unit, value) {
  * Simplicity: single-unit < two-part combo; among singles, cup > tbsp > tsp;
  * then nearest (absolute tsp error); on an equal-distance tie, round DOWN
  * (prefer the smaller candidate — over-seasoning is worse).
- * Never tsp-only OUTPUT for ≥1 tbsp (singles). Larger-unit candidates (tbsp, cups)
- * are always offered so amounts just under a boundary can snap up within 5%.
+ * Never tsp-only OUTPUT for ≥1 tbsp (singles). Just under a unit threshold, offer
+ * ONLY that threshold as a larger-unit candidate (e.g. below 1 tbsp → only "1 tbsp",
+ * never "1/2 tbsp"; below 1/4 cup → only "1/4 cup"). No cup+tbsp below 1 cup.
  * Standalone 1/3, 2/3 and whole+1/3|+2/3 tsp allowed; never 1/3 or 2/3 tbsp;
  * no thirds in tbsp+tsp combos. Ranges may share tsp when both ends ≤ 4 tsp.
  * Below 1/16 tsp → pinch; 1/16..1/8 → 1/8 tsp (explicit exception, may exceed 5%).
@@ -488,34 +489,42 @@ function buildSnapCandidates(trueTsp) {
   }
 
   // --- single tbsp: whole or half, under 1 cup ---
-  // Always offer (even when trueTsp is just under 1 tbsp) so a within-5%
-  // larger-unit candidate can win; the 5% filter drops far ones.
+  // Below 1 tbsp: offer ONLY the threshold "1 tbsp" (never 1/2 tbsp), so
+  // 1.5 tsp stays "1 1/2 tsp" while 2.95 tsp can still snap to "1 tbsp".
   const tbspStep = ALLOW_HALF_TBSP ? 0.5 : 1;
-  for (let tb = tbspStep; tb < 16 - 1e-9; tb += tbspStep) {
-    add(tb * 3, formatTbspLabel(tb), 1, 1);
+  if (trueTsp < 3 - 1e-9) {
+    add(3, '1 tbsp', 1, 1);
+  } else {
+    for (let tb = tbspStep; tb < 16 - 1e-9; tb += tbspStep) {
+      add(tb * 3, formatTbspLabel(tb), 1, 1);
+    }
   }
 
   // --- single cups: whole + clean cook fraction, near the true amount ---
+  // Below 1/4 cup: offer ONLY the threshold "1/4 cup" (same boundary principle).
   const approxCups = trueTsp / 48;
-  const minCupWhole = Math.max(0, Math.floor(approxCups) - 2);
-  const maxCupWhole = Math.min(Math.floor(approxCups) + 3, Math.ceil(approxCups) + 2);
-  // Always cover at least 0..2 so small→cup candidates still appear when relevant
-  const cupLo = Math.min(minCupWhole, 0);
-  const cupHi = Math.max(maxCupWhole, 2);
-  for (let w = cupLo; w <= cupHi; w++) {
-    if (w >= 1) add(w * 48, `${w} ${w > 1 ? 'cups' : 'cup'}`, 1, 0);
-    for (const [f] of COOK_FRACTIONS) {
-      if (f === 0 || f === 1) continue;
-      const c = w + f;
-      if (c < 1 / 4 - 1e-9) continue;
-      add(c * 48, `${formatCookFracExact(c)} ${c > 1 ? 'cups' : 'cup'}`, 1, 0);
+  if (trueTsp < 12 - 1e-9) {
+    add(12, '1/4 cup', 1, 0);
+  } else {
+    const minCupWhole = Math.max(0, Math.floor(approxCups) - 2);
+    const maxCupWhole = Math.min(Math.floor(approxCups) + 3, Math.ceil(approxCups) + 2);
+    const cupLo = Math.min(minCupWhole, 0);
+    const cupHi = Math.max(maxCupWhole, 2);
+    for (let w = cupLo; w <= cupHi; w++) {
+      if (w >= 1) add(w * 48, `${w} ${w > 1 ? 'cups' : 'cup'}`, 1, 0);
+      for (const [f] of COOK_FRACTIONS) {
+        if (f === 0 || f === 1) continue;
+        const c = w + f;
+        if (c < 1 / 4 - 1e-9) continue;
+        add(c * 48, `${formatCookFracExact(c)} ${c > 1 ? 'cups' : 'cup'}`, 1, 0);
+      }
     }
   }
 
   // --- combo: tbsp + tsp near the true amount, only below 1 cup ---
-  // Offer whenever the amount is in the tbsp+tsp neighbourhood (incl. just
-  // under 1 tbsp), so eligibility is not gated on the unit boundary.
-  if (trueTsp >= 2.5 - 1e-9 && trueTsp < 48 - 1e-9) {
+  // Only at/above 1 tbsp (threshold); sub-tbsp amounts stay on the tsp grid
+  // (plus the lone "1 tbsp" larger-unit candidate above).
+  if (trueTsp >= 3 - 1e-9 && trueTsp < 48 - 1e-9) {
     const approxTbsp = trueTsp / 3;
     const w0 = Math.max(1, Math.floor(approxTbsp) - 2);
     const w1 = Math.min(15, Math.ceil(approxTbsp) + 2); // under 1 cup
@@ -528,23 +537,28 @@ function buildSnapCandidates(trueTsp) {
     }
   }
 
-  // --- combo: cups + whole/half tbsp under 4 (R4), near true amount ---
-  for (let w = cupLo; w <= cupHi; w++) {
-    const cupBases = [];
-    if (w >= 1) cupBases.push(w);
-    for (const [f] of COOK_FRACTIONS) {
-      if (f === 0 || f === 1) continue;
-      const c = w + f;
-      if (c >= 1 - 1e-9) cupBases.push(c);
-    }
-    for (const c of cupBases) {
-      for (let tb = tbspStep; tb < 4 - 1e-9; tb += tbspStep) {
-        add(
-          c * 48 + tb * 3,
-          `${formatCookFracExact(c)} ${c > 1 ? 'cups' : 'cup'} + ${formatTbspLabel(tb)}`,
-          2,
-          0,
-        );
+  // --- combo: cups + whole/half tbsp under 4 (R4) — only at/above 1 cup ---
+  if (trueTsp >= 48 - 1e-9) {
+    const approxC = trueTsp / 48;
+    const minW = Math.max(0, Math.floor(approxC) - 2);
+    const maxW = Math.floor(approxC) + 3;
+    for (let w = minW; w <= maxW; w++) {
+      const cupBases = [];
+      if (w >= 1) cupBases.push(w);
+      for (const [f] of COOK_FRACTIONS) {
+        if (f === 0 || f === 1) continue;
+        const c = w + f;
+        if (c >= 1 - 1e-9) cupBases.push(c);
+      }
+      for (const c of cupBases) {
+        for (let tb = tbspStep; tb < 4 - 1e-9; tb += tbspStep) {
+          add(
+            c * 48 + tb * 3,
+            `${formatCookFracExact(c)} ${c > 1 ? 'cups' : 'cup'} + ${formatTbspLabel(tb)}`,
+            2,
+            0,
+          );
+        }
       }
     }
   }

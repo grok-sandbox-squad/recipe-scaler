@@ -713,6 +713,30 @@ test('D-new: unit-boundary candidates — just under 1 tbsp snaps to 1 tbsp', ()
   assert.equal(out('3/4 tsp', 3.99), '1 tbsp');
   assert.equal(out('1 1/2 tsp', 1.97), '1 tbsp');
   assert.equal(out('1/2 tbsp', 1.95), '1 tbsp');
+  // Below threshold: never promote 1.5 tsp to "1/2 tbsp"
+  assert.equal(out('1 tbsp cornstarch', 0.5), '1 1/2 tsp cornstarch');
+  assert.equal(out('1 tsp salt', 1.5), '1 1/2 tsp salt');
+  assert.equal(out('1/2 tsp', 3), '1 1/2 tsp');
+  assert.equal(out('2 tsp', 3 / 4), '1 1/2 tsp');
+  assert.equal(out('1 1/2 tbsp lemon juice', 1 / 3), '1 1/2 tsp lemon juice');
+});
+
+test('D-new: sweep — no standalone 1/2 tbsp for amounts under 1 tbsp', () => {
+  const amounts = [
+    '1/8 tsp', '1/4 tsp', '1/3 tsp', '1/2 tsp', '2/3 tsp', '3/4 tsp',
+    '1 tsp', '1 1/4 tsp', '1 1/3 tsp', '1 1/2 tsp', '1 2/3 tsp', '2 tsp', '2 1/2 tsp', '2 3/4 tsp',
+  ];
+  for (const amt of amounts) {
+    for (let k = 10; k <= 299; k++) { // keep scaled result under ~3 tsp for these bases
+      const f = k / 100;
+      if (Math.abs(f - 1) < 1e-12) continue;
+      const o = out(amt, f);
+      const exact = parseQuantity(amt.slice(0, amt.lastIndexOf(' '))) * f;
+      if (exact >= 3 - 1e-9) continue;
+      assert.notEqual(o, '1/2 tbsp', `${amt} x${f} -> ${o}`);
+      assert.doesNotMatch(o, /^1\/2 tbsp$/, `${amt} x${f}`);
+    }
+  }
 });
 
 test('D-new: ranges may share tsp when both ends ≤ 4 tsp', () => {
