@@ -1,0 +1,9 @@
+{
+  "name": "recipe-scaler",
+  "private": true,
+  "type": "module",
+  "description": "Static recipe scaler. No dependencies, no build step.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
