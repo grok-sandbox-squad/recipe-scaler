@@ -666,7 +666,8 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
   // x1 echo for US cook volumes (cup/tbsp/tsp) only: keep the typed
   // amount+unit unless it is an eighth-cup, which still rewrites. Mixed
   // eighth-cups (whole ≥ 1) convert exactly (cup + 2 tbsp); plain eighth-cups
-  // under 1 keep the tbsp rewrite. Unicode glued forms (1⅞) match ASCII.
+  // under 1 keep the tbsp rewrite. Ranges that include a mixed eighth-cup
+  // echo as typed. Unicode glued forms (1⅞) match ASCII.
   // Eighth tsp/tbsp ARE echoed at ×1. Counts/weights/metric still process.
   const cookUnit = p.unit === 'cup' || p.unit === 'tbsp' || p.unit === 'tsp';
   const x1 = Math.abs(factor - 1) < 1e-15 && system !== 'metric';
@@ -674,7 +675,11 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
     // Includes ranges with a 0 lower end (echo "0-1 tsp" unchanged at ×1).
     return { ...base, output: line, scaled: true };
   }
-  // ×1 eighth-cups: exact mixed (≥1) rewrite; under-1 and ranges use existing paths.
+  // ×1 ranges with a mixed eighth-cup end: echo exactly as typed.
+  if (x1 && p.unit === 'cup' && p.quantities.length === 2 && hasMixedEighthCup(p)) {
+    return { ...base, output: line, scaled: true };
+  }
+  // ×1 eighth-cup singles: exact mixed (≥1) rewrite; under-1 → tbsp path.
   if (x1 && p.unit === 'cup' && hasForbiddenEighth(p) && p.quantities.length === 1) {
     const q = p.quantities[0];
     const text = q >= 1 - 1e-12
@@ -794,6 +799,26 @@ function formatExactMixedEighthCup(cups) {
   const cupText = formatCookFracExact(cupAmt);
   const u = cupAmt > 1 ? 'cups' : 'cup';
   return `${cupText} ${u} + 2 tbsp`;
+}
+
+/**
+ * True when a raw cup qty is a *mixed* eighth (whole ≥ 1 plus 1/8, 3/8, 5/8, 7/8),
+ * ASCII ("1 7/8") or Unicode glued/spaced ("1⅞", "1 ⅞").
+ * @param {string} raw
+ * @returns {boolean}
+ */
+function isMixedEighthRaw(raw) {
+  const s = raw.trim();
+  let m;
+  if ((m = s.match(/^(\d+)\s+[1357]\/8$/u))) return Number(m[1]) >= 1;
+  if ((m = s.match(/^(\d+)\s*(?:⅛|⅜|⅝|⅞)$/u))) return Number(m[1]) >= 1;
+  return false;
+}
+
+/** True when any end of a cup parse is a mixed eighth-cup. */
+function hasMixedEighthCup(p) {
+  if (p.unit !== 'cup') return false;
+  return p.rawQuantities.some(isMixedEighthRaw);
 }
 
 /**
