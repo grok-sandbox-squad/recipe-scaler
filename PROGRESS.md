@@ -29,7 +29,7 @@ Out: backend, accounts, analytics/tracking, paid services, saving recipes, real 
 
 ## Working rules
 - Nobody pushes to `main`. Every change is a PR; `main` requires 1 approving review and a passing `test` check, admins included.
-- Supreme Leader never approves or merges. After Reviewer approves and checks pass, the PR author merges (squash).
+- Supreme Leader never approves or merges. After Reviewer approves and checks pass, Builder squash-merges.
 - Commits use `354381310+grok-sandbox-squad@users.noreply.github.com` and are signed with the author's bot name.
 - Demo data is made up. No tracking, no external scripts or fonts.
 
@@ -40,7 +40,7 @@ Out: backend, accounts, analytics/tracking, paid services, saving recipes, real 
 - **D4. Friendly fractions.** Round to the nearest of 1/8, 1/4, 1/3, 1/2, 2/3, 3/4 (and eighths) and show mixed numbers (e.g. `1 1/3`). Metric grams/ml shown as rounded whole numbers (or 1 decimal under 10).
 - **D5. "Reads better" units.** US volume picks the largest of tsp, tbsp, cup where the amount is at least about 1 of that unit (e.g. 48 tsp is 1 cup, 6 tsp is 2 tbsp). US weight: oz up to 16, then lb. Metric: ml up to 1000 then l, g up to 1000 then kg. Count items (eggs) and words like "pinch" are never converted.
 - **D6. Unparseable lines.** Kept exactly as typed and visibly marked "not scaled". Blank lines are kept as spacing. "pinch of salt" and "salt to taste" have no number, so they are shown unchanged and marked.
-- **D7. Merging.** The PR author merges after approval, since Supreme Leader doesn't merge and Reviewer reviews.
+- **D7. Merging.** Builder squash-merges every approved PR (including Supreme Leader's), since Supreme Leader never merges and Reviewer's job is to review, not ship.
 
 ## Log
 - 2026-11-09: Supreme Leader created the public repo, enabled Pages from `main` /, protected `main` (1 approving review, dismiss stale reviews, required `test` check, admins included, no force pushes/deletions). Opened the plan + CI PR.
