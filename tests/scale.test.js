@@ -601,7 +601,8 @@ test('D-new: x0.95 and x3/4 sweeps — R1–R4 + 5% snap invariants', () => {
       if (m) {
         const lo = parseQuantity(m[1]);
         const hi = parseQuantity(m[2]);
-        if (lo !== null && hi !== null) assert.ok(lo < 3 && hi < 3, `no tsp end ≥1 tbsp: ${msg}`);
+        // Range exception: shared tsp allowed when both ends ≤ 4 tsp
+        if (lo !== null && hi !== null) assert.ok(lo <= 4 && hi <= 4, `tsp range ends ≤4: ${msg}`);
       }
       for (const part of displayed.split(/\s*\+\s*|\s+to\s+/)) {
         const p = part.trim().replace(/^up to /, '');
@@ -706,3 +707,91 @@ test('D-new: no combo contains 1/3 or 2/3 tsp leftover', () => {
     }
   }
 });
+
+test('D-new: unit-boundary candidates — just under 1 tbsp snaps to 1 tbsp', () => {
+  assert.equal(out('1 tsp salt', 2.95), '1 tbsp salt');
+  assert.equal(out('3/4 tsp', 3.99), '1 tbsp');
+  assert.equal(out('1 1/2 tsp', 1.97), '1 tbsp');
+  assert.equal(out('1/2 tbsp', 1.95), '1 tbsp');
+});
+
+test('D-new: ranges may share tsp when both ends ≤ 4 tsp', () => {
+  assert.equal(out('1-2 tsp', 2), '2-4 tsp');
+  assert.equal(out('2-4 tsp'), '2-4 tsp'); // x1 echo; upper end exactly 4 tsp
+  // Ends above 4 tsp keep tbsp shared / old behaviour
+  assert.equal(out('1-2 tsp', 3), '1-2 tbsp');
+  // Singles still not tsp-only at ≥1 tbsp
+  assert.equal(formatUsVolume(4, 'tsp'), '1 tbsp + 1 tsp');
+});
+
+test('D-new: sweep — no >5% error when a closer allowed candidate exists', () => {
+  function toTsp(qty) {
+    if (/^a pinch/.test(qty)) return 1 / 32;
+    let total = 0;
+    for (const part of qty.split(/\s*\+\s*/)) {
+      const m = part.trim().match(/^(.+?)\s+(cups?|tbsp|tsp)$/);
+      assert.ok(m, qty);
+      const n = parseQuantity(m[1]);
+      const u = m[2].startsWith('cup') ? 'cup' : m[2];
+      total += n * (u === 'cup' ? 48 : u === 'tbsp' ? 3 : 1);
+    }
+    return total;
+  }
+  // Allowed candidates (mirrors Reviewer nearest.mjs)
+  const allowed = [1 / 8];
+  for (let w = 0; w < 3; w++) {
+    for (const f of [0, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4]) {
+      if (w + f > 0) allowed.push(w + f);
+    }
+  }
+  for (let v = 1; v < 16; v += 0.5) allowed.push(v * 3);
+  for (let w = 0; w <= 20; w++) {
+    for (const f of [0, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4]) {
+      if (w + f >= 1 / 4) allowed.push((w + f) * 48);
+    }
+  }
+  for (let tb = 1; tb < 16; tb++) {
+    for (const q of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75]) {
+      allowed.push(tb * 3 + q);
+    }
+  }
+  for (let w = 0; w <= 8; w++) {
+    for (const f of [0, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4]) {
+      for (let tb = 0.5; tb < 4; tb += 0.5) {
+        if (w + f >= 1) allowed.push((w + f) * 48 + tb * 3);
+      }
+    }
+  }
+  const amts = {
+    tsp: ['1/8', '1/4', '1/3', '1/2', '2/3', '3/4', '1', '1 1/4', '1 1/3', '1 1/2', '1 2/3', '2', '2 1/2', '3', '4'],
+    tbsp: ['1/2', '1', '1 1/2', '2', '3', '5', '7', '11', '15'],
+    cup: ['1/4', '1/3', '1/2', '2/3', '3/4', '1', '1 1/4', '1 2/3', '2', '3'],
+  };
+  function fr(s) {
+    return parseQuantity(s);
+  }
+  for (const [u, list] of Object.entries(amts)) {
+    for (const a of list) {
+      for (let k = 10; k <= 400; k++) {
+        const f = k / 100;
+        if (Math.abs(f - 1) < 1e-12) continue;
+        const uu = u === 'cup' && fr(a) > 1 ? 'cups' : u;
+        const r = scaleLine(`${a} ${uu} salt`, f);
+        const o = r.output.replace(/ (of )?salt$/, '');
+        const ex = fr(a) * (u === 'cup' ? 48 : u === 'tbsp' ? 3 : 1) * f;
+        if (ex < 1 / 8) continue;
+        if (o.startsWith('a pinch')) continue;
+        const got = toTsp(o);
+        const e = Math.min(Math.abs(got - ex) / ex, Math.abs(got - ex) / got);
+        if (e <= 0.05 + 1e-9) continue;
+        const better = allowed.filter((v) => Math.abs(v - ex) < Math.abs(got - ex) - 1e-9);
+        assert.equal(
+          better.length,
+          0,
+          `${a} ${uu} x${f} -> "${o}" (${(e * 100).toFixed(1)}%); closer: ${better[0]}`,
+        );
+      }
+    }
+  }
+});
+
