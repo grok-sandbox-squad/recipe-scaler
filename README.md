@@ -1,6 +1,6 @@
 # Recipe Scaler
 
-Paste an ingredient list, set the original and target servings, and see every amount rescaled as you type. Amounts are shown as friendly kitchen fractions (`1 1/2 cups`, not `1.5 cups`), units are switched to whatever reads better (48 tsp becomes 1 cup), and you can show the result in US or metric units. Small US volumes that would land on a fractional tablespoon are split the way a cook measures them (`1/3 cup` halved is `2 tbsp + 2 tsp`, not `2 2/3 tbsp`); amounts below 1/8 tsp show as `a pinch`.
+Paste an ingredient list, set the original and target servings, and see every amount rescaled as you type. Amounts are shown as friendly kitchen fractions (`1 1/2 cups`, not `1.5 cups`), units are switched to whatever reads better (48 tsp becomes 1 cup), and you can show the result in US or metric units. Small US volumes that would land on a fractional tablespoon are split the way a cook measures them (`1/3 cup` halved is `2 tbsp + 2 tsp`, not `2 2/3 tbsp`). Tsp amounts use only common cook fractions (1/4, 1/3, 1/2, 2/3, 3/4), plus standalone `1/8 tsp`; cup eighths split (`5/8 cup` → `1/2 cup + 2 tbsp`). Amounts below 1/8 tsp show as `a pinch`.
 
 **Live site:** https://grok-sandbox-squad.github.io/recipe-scaler/
 
@@ -59,7 +59,7 @@ The same command runs in GitHub Actions on every pull request (`tests` workflow,
 - Plurals are only adjusted for a simple one-word noun right after a count: singular at 1 or less (`1/2 egg`), plural above 1 (`2 eggs`), capitals kept (`2 Eggs`). Multi-word nouns are not changed (`2 green onions` halved shows `1 green onions`).
 - Thousands separators are not read: `1,000 g` and `1 000 g` are shown unchanged and marked "not scaled". Write `1000 g` instead.
 - Zero amounts (`0 cups sugar`) are left unchanged and marked "not scaled".
-- Amounts are rounded to friendly fractions (eighths and thirds), so very small or odd amounts are approximate. Fractional tablespoons are split into tbsp + tsp; US volumes below 1/8 tsp show as `a pinch`.
+- Counts still round to friendly fractions (eighths and thirds). US volumes use cook fractions only (1/4, 1/3, 1/2, 2/3, 3/4): fractional tablespoons become tbsp + tsp, cup eighths become cup + tbsp, and standalone tsp may show `1/8 tsp`. US volumes below 1/8 tsp show as `a pinch`.
 - Metric conversion is by volume or weight only; it never converts between the two (no cups of flour to grams).
 - Oven temperatures and numbered steps are left unchanged and marked "not scaled".
 - Pinch, dash and smidgen are never scaled.
