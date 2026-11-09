@@ -664,9 +664,9 @@ export function scaleLine(line, factor, { system = 'us' } = {}) {
   }
 
   // x1 echo for US cook volumes (cup/tbsp/tsp) only: keep the typed
-  // amount+unit unless it contains a forbidden eighth (3/8, 5/8, 7/8, or
-  // 1/8 of a non-tsp unit). Half-tbsp and even "1 1/3 tbsp" ARE echoed at
-  // x1 (thirds only split when scaled). Counts/weights/metric still process.
+  // amount+unit unless it is an eighth-cup (1/8, 3/8, 5/8, 7/8 cup), which
+  // still rewrites per ruling (d). Eighth tsp/tbsp ARE echoed at ×1.
+  // Counts/weights/metric still process.
   const cookUnit = p.unit === 'cup' || p.unit === 'tbsp' || p.unit === 'tsp';
   if (
     Math.abs(factor - 1) < 1e-15
@@ -774,14 +774,15 @@ function normalizeRangeEnd(s) {
   return s.replace(/\bcups\b/g, 'cup').replace(/\s+/g, ' ').trim();
 }
 
-/** True when a raw qty string uses 3/8, 5/8, 7/8, or 1/8 of a non-tsp unit. */
+/**
+ * True when a raw qty uses an eighth of a *cup* (1/8, 3/8, 5/8, 7/8).
+ * Eighth tsp/tbsp are echoed at ×1 (Supreme Leader); only eighth-cups rewrite.
+ */
 function hasForbiddenEighth(p) {
-  if (!p.unit) return false;
-  const eighths = /(?:^|\s)(?:[357]\/8|⅜|⅝|⅞)(?:\s|$)/u;
-  const eighthTspOnly = /(?:^|\s)(?:1\/8|⅛)(?:\s|$)/u;
+  if (p.unit !== 'cup') return false;
+  const eighthCups = /(?:^|\s)(?:[1357]\/8|⅛|⅜|⅝|⅞)(?:\s|$)/u;
   for (const raw of p.rawQuantities) {
-    if (eighths.test(raw)) return true;
-    if (eighthTspOnly.test(raw) && p.unit !== 'tsp') return true;
+    if (eighthCups.test(raw)) return true;
   }
   return false;
 }

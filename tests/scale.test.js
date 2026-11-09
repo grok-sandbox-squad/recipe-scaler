@@ -819,3 +819,120 @@ test('D-new: sweep — no >5% error when a closer allowed candidate exists', () 
   }
 });
 
+test('D-new: x1 echoes eighth tsp/tbsp (drift list); eighth-cups still rewrite', () => {
+  // All formerly drifting eighth tsp/tbsp inputs echo exactly as typed at ×1.
+  assert.equal(out('1/8 tbsp demo flour'), '1/8 tbsp demo flour');
+  assert.equal(out('1/8 Tbsp demo flour'), '1/8 Tbsp demo flour');
+  assert.equal(out('1/8 Tbsp. demo flour'), '1/8 Tbsp. demo flour');
+  assert.equal(out('1/8 tablespoon demo flour'), '1/8 tablespoon demo flour');
+  assert.equal(out('1/8 tablespoons demo flour'), '1/8 tablespoons demo flour');
+  assert.equal(out('3/8 tbsp demo flour'), '3/8 tbsp demo flour');
+  assert.equal(out('3/8 Tbsp demo flour'), '3/8 Tbsp demo flour');
+  assert.equal(out('3/8 Tbsp. demo flour'), '3/8 Tbsp. demo flour');
+  assert.equal(out('3/8 tablespoon demo flour'), '3/8 tablespoon demo flour');
+  assert.equal(out('3/8 tablespoons demo flour'), '3/8 tablespoons demo flour');
+  assert.equal(out('3/8 tsp demo flour'), '3/8 tsp demo flour');
+  assert.equal(out('3/8 tsp. demo flour'), '3/8 tsp. demo flour');
+  assert.equal(out('3/8 teaspoon demo flour'), '3/8 teaspoon demo flour');
+  assert.equal(out('3/8 teaspoons demo flour'), '3/8 teaspoons demo flour');
+  assert.equal(out('5/8 tbsp demo flour'), '5/8 tbsp demo flour');
+  assert.equal(out('5/8 Tbsp demo flour'), '5/8 Tbsp demo flour');
+  assert.equal(out('5/8 Tbsp. demo flour'), '5/8 Tbsp. demo flour');
+  assert.equal(out('5/8 tablespoon demo flour'), '5/8 tablespoon demo flour');
+  assert.equal(out('5/8 tablespoons demo flour'), '5/8 tablespoons demo flour');
+  assert.equal(out('5/8 tsp demo flour'), '5/8 tsp demo flour');
+  assert.equal(out('5/8 tsp. demo flour'), '5/8 tsp. demo flour');
+  assert.equal(out('5/8 teaspoon demo flour'), '5/8 teaspoon demo flour');
+  assert.equal(out('5/8 teaspoons demo flour'), '5/8 teaspoons demo flour');
+  assert.equal(out('7/8 tsp demo flour'), '7/8 tsp demo flour');
+  assert.equal(out('7/8 tsp. demo flour'), '7/8 tsp. demo flour');
+  assert.equal(out('7/8 teaspoon demo flour'), '7/8 teaspoon demo flour');
+  assert.equal(out('7/8 teaspoons demo flour'), '7/8 teaspoons demo flour');
+  assert.equal(out('1 7/8 tsp demo flour'), '1 7/8 tsp demo flour');
+  assert.equal(out('1 7/8 tsp. demo flour'), '1 7/8 tsp. demo flour');
+  assert.equal(out('1 7/8 teaspoon demo flour'), '1 7/8 teaspoon demo flour');
+  assert.equal(out('1 7/8 teaspoons demo flour'), '1 7/8 teaspoons demo flour');
+  assert.equal(out('2 3/8 tbsp demo flour'), '2 3/8 tbsp demo flour');
+  assert.equal(out('2 3/8 Tbsp demo flour'), '2 3/8 Tbsp demo flour');
+  assert.equal(out('2 3/8 Tbsp. demo flour'), '2 3/8 Tbsp. demo flour');
+  assert.equal(out('2 3/8 tablespoon demo flour'), '2 3/8 tablespoon demo flour');
+  assert.equal(out('2 3/8 tablespoons demo flour'), '2 3/8 tablespoons demo flour');
+  assert.equal(out('⅛ tbsp demo flour'), '⅛ tbsp demo flour');
+  assert.equal(out('⅛ Tbsp demo flour'), '⅛ Tbsp demo flour');
+  assert.equal(out('⅛ Tbsp. demo flour'), '⅛ Tbsp. demo flour');
+  assert.equal(out('⅛ tablespoon demo flour'), '⅛ tablespoon demo flour');
+  assert.equal(out('⅛ tablespoons demo flour'), '⅛ tablespoons demo flour');
+  assert.equal(out('⅜ tbsp demo flour'), '⅜ tbsp demo flour');
+  assert.equal(out('⅜ Tbsp demo flour'), '⅜ Tbsp demo flour');
+  assert.equal(out('⅜ Tbsp. demo flour'), '⅜ Tbsp. demo flour');
+  assert.equal(out('⅜ tablespoon demo flour'), '⅜ tablespoon demo flour');
+  assert.equal(out('⅜ tablespoons demo flour'), '⅜ tablespoons demo flour');
+  assert.equal(out('⅜ tsp demo flour'), '⅜ tsp demo flour');
+  assert.equal(out('⅜ tsp. demo flour'), '⅜ tsp. demo flour');
+  assert.equal(out('⅜ teaspoon demo flour'), '⅜ teaspoon demo flour');
+  assert.equal(out('⅜ teaspoons demo flour'), '⅜ teaspoons demo flour');
+  assert.equal(out('⅝ tbsp demo flour'), '⅝ tbsp demo flour');
+  assert.equal(out('⅝ Tbsp demo flour'), '⅝ Tbsp demo flour');
+  assert.equal(out('⅝ Tbsp. demo flour'), '⅝ Tbsp. demo flour');
+  assert.equal(out('⅝ tablespoon demo flour'), '⅝ tablespoon demo flour');
+  assert.equal(out('⅝ tablespoons demo flour'), '⅝ tablespoons demo flour');
+  assert.equal(out('⅝ tsp demo flour'), '⅝ tsp demo flour');
+  assert.equal(out('⅝ tsp. demo flour'), '⅝ tsp. demo flour');
+  assert.equal(out('⅝ teaspoon demo flour'), '⅝ teaspoon demo flour');
+  assert.equal(out('⅝ teaspoons demo flour'), '⅝ teaspoons demo flour');
+  assert.equal(out('⅞ tsp demo flour'), '⅞ tsp demo flour');
+  assert.equal(out('⅞ tsp. demo flour'), '⅞ tsp. demo flour');
+  assert.equal(out('⅞ teaspoon demo flour'), '⅞ teaspoon demo flour');
+  assert.equal(out('⅞ teaspoons demo flour'), '⅞ teaspoons demo flour');
+  // Eighth-cups still rewrite (ruling d) — exact strings from main.
+  assert.equal(out('1/8 cup'), '2 tbsp');
+  assert.equal(out('3/8 cup'), '6 tbsp');
+  assert.equal(out('5/8 cup'), '10 tbsp');
+  assert.equal(out('7/8 cup'), '14 tbsp');
+  assert.equal(out('1/8 cup flour'), '2 tbsp flour');
+  assert.equal(out('5/8 cup sugar'), '10 tbsp sugar');
+  // Ranges / odd spacing / unicode
+  assert.equal(out('1/8-1/4 tsp salt'), '1/8-1/4 tsp salt');
+  assert.equal(out('7/8  tsp odd'), '7/8  tsp odd');
+  assert.equal(out('⅞ tsp flour'), '⅞ tsp flour');
+});
+
+test('D-new: x1 formerly-drifting eighths now echo (main rewrote these)', () => {
+  // Documented vs-main diffs (e642341): these inputs were rewritten away from typed
+  // eighths; at ×1 they must now echo. Non-x1 identity vs main is checked offline
+  // in the PR (sweep non-x1Diff=0) and by existing factor sweeps in this file.
+  const pairs = [
+    ['3/8 tsp x', '1/3 tsp x'],
+    ['5/8 tsp x', '2/3 tsp x'],
+    ['7/8 tsp x', '3/4 tsp x'],
+    ['1 7/8 tsp x', '1 3/4 tsp x'],
+    ['1/8 tbsp x', '1/3 tsp x'],
+    ['3/8 tbsp x', '1 tsp x'],
+    ['5/8 tbsp x', '1 3/4 tsp x'],
+    ['7/8 tbsp x', '2 2/3 tsp x'],
+    ['2 3/8 tbsp x', '2 1/2 tbsp x'],
+  ];
+  for (const [inp, _mainWas] of pairs) {
+    assert.equal(out(inp), inp);
+  }
+  // Non-eighth and eighth-cup still follow existing rules at x1
+  assert.equal(out('1/2 tsp x'), '1/2 tsp x');
+  assert.equal(out('5/8 cup x'), '10 tbsp x');
+});
+
+
+test('D-new: x1 eighths self-attack — empty/zero/neg/huge/malformed/odd spacing', () => {
+  assert.equal(out(''), '');
+  assert.equal(out('0 tsp salt'), '0 tsp salt');
+  // negative / malformed stay as typed (no-quantity path)
+  assert.equal(scaleLine('-1/8 tsp salt', 1).output, '-1/8 tsp salt');
+  assert.equal(scaleLine('abc tsp salt', 1).output, 'abc tsp salt');
+  assert.equal(out('7/8  tsp odd'), '7/8  tsp odd');
+  assert.equal(out('1/8\ttbsp oil'), '1/8\ttbsp oil');
+  // huge eighth tsp still echoes at x1
+  assert.equal(out('999 7/8 tsp flour'), '999 7/8 tsp flour');
+  // eighth-cup still rewritten even when huge
+  assert.equal(out('999 5/8 cup flour'), scaleLine('999 5/8 cup flour', 1).output);
+  assert.match(out('999 5/8 cup flour'), /tbsp|cup/);
+});
+
