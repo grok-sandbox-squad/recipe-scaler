@@ -59,14 +59,15 @@ Out: backend, accounts, analytics/tracking, paid services, saving recipes, real 
 ## Who did what
 - **Supreme Leader:** repo, Pages, branch protection, CI workflow and hardening, plan, decisions, this log, coordination.
 - **Builder:** `src/scale.js` and tests (#3), UI, demo recipes, README, UI tests (#4); merged #1 and #2.
-- **Reviewer:** reviewed and tested every PR locally and in headless Chromium, ran fuzz and perf checks, merged #3 and #4, and checked the live site.
+- **Reviewer:** reviewed every PR (code review and Node probes for #1-#3, plus local and live checks in headless Chromium for the #4 UI), ran fuzz and perf checks, merged #3 and #4, and checked the live site.
 
 ## Reviewer catches
 - PR #1: workflow lacked `permissions: contents: read`; actions not pinned to SHAs (fixed in follow-up PR). Also flagged that an empty suite passes CI (rule D9).
+- PR #2: verified both pinned SHAs are the official actions/checkout and actions/setup-node v4.4.0 commits. Nit: the working rules said "merges" while D7 said "squash-merges" (fixed in #5).
 - PR #3 round 1 (blocking): malformed decimals garbled (`1.5.2 g` became `1 1/2.2 g`); factors 0/NaN/Infinity/negative produced `NaN tsp` / `-48 tsp`. Nits: `2 egg` plural, `1 pinch` became `1/8 pinch`, and output must be escaped in the UI.
 - PR #3 round 2 (blocking): `0 cups` gave `NaN tsp` (divide by zero); `1 000 g` x0.5 became `1/2 000 g`. Nits: `1 eggs`, capitalized nouns, wrong flag reason for `5. cup`.
-- PR #3 round 3: approved after a 200k-line fuzz run (0 crashes, 0 NaN) and a 10k-line perf check (~30 ms).
-- PR #4: approved. Nits: "Copied" not announced to screen readers, tiny factor shows "Scaled ×0", servings stays two columns on narrow phones, vague reason for `1 000 g`.
+- PR #3 round 3: approved after a 200k-line fuzz run (0 crashes, 0 NaN) and a 10k-line perf check (~30 ms). Follow-up nits: naive plurals (`2 leaves` x0.5 gives `1 leave`), reversed ranges like `3-2 cups` still get scaled, `1 00 g` x0.5 gives `1/2 00 g`, `1 cup (240 ml)` x2 keeps a stale `(240 ml)`, and factors of 1e21 or more print in e-notation.
+- PR #4: approved. Verified: no CSP errors, user text renders as plain text (no XSS), no sideways overflow at 390px or 320px, and the live site checked at 97a38cf (app.js matches main, only github.io requests, both demos work). Nits: "Copied" not announced to screen readers, tiny factor shows "Scaled ×0", servings stays two columns on narrow phones, vague reason for `1 000 g`.
 
 ## Known limitations / next
 - Naive plural rule (`2 leaves` x0.5 gives `1 leave`).
